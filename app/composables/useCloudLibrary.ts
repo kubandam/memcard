@@ -1,10 +1,12 @@
-import { ref, type Ref } from 'vue'
+import { ref, toRaw, type Ref } from 'vue'
 import type { CloudGame, LibraryManifest, LibraryUsage } from '~~/shared/types/library'
 import { fromBase64Url, toBase64Url } from '~~/shared/utils/bytes'
 import { decryptJson, encryptJson } from '~~/shared/utils/chunkCrypto'
 import { authVerifierHex, deriveLibraryKeys, deriveRootKey, formatRecoveryKey, parseSecret, type LibraryKeys } from '~~/shared/utils/libraryKeys'
 import type { LocalGame } from '~~/shared/types/game'
 import { newGameKey, newObjectKey } from '~~/shared/utils/chunkCrypto'
+import { deriveShareKeys, formatShareCode, newShareSecret, wrapPayload } from '~~/shared/utils/shareCodes'
+import type { SharePayload } from '~~/shared/types/share'
 import { ApiError, createCloudApi, type CloudApi } from '~/utils/cloudApi'
 import { ResumeMismatchError, UploadCancelledError, uploadObject } from '~/utils/cloudUpload'
 import { DecryptError, downloadObject } from '~/utils/cloudDownload'
@@ -19,6 +21,14 @@ interface PendingUpload {
   fileKeys: string[]
   coverKey?: string
   done: string[]
+}
+
+export interface IssuedShare {
+  id: string
+  kind: 'game' | 'library'
+  label: string
+  gameId: string | null
+  createdAt: number
 }
 
 export interface UploadProgress {
@@ -51,6 +61,7 @@ interface CloudState {
   recoveryKey: Ref<string | null>
   uploadProgress: Ref<UploadProgress | null>
   downloadProgress: Ref<UploadProgress | null>
+  issuedShares: Ref<IssuedShare[]>
   keys: LibraryKeys | null
   api: CloudApi | null
   /** Bumped whenever the open library changes; long operations stop when it moves. */
@@ -74,6 +85,7 @@ function freshState(): CloudState {
     recoveryKey: ref(null),
     uploadProgress: ref(null),
     downloadProgress: ref(null),
+    issuedShares: ref([]),
     keys: null,
     api: null,
     generation: 0,
@@ -148,6 +160,7 @@ export function useCloudLibrary() {
     s.etag = null
     s.manifest = { version: 1, games: [] }
     s.games.value = []
+    s.issuedShares.value = []
     s.usage.value = null
     s.libraryId.value = null
     s.status.value = 'closed'
@@ -401,11 +414,71 @@ export function useCloudLibrary() {
     return { kind: 'error', key: 'cloud.network' }
   }
 
+  async function issueShare(payload: SharePayload, gameId: string | null, allowedKeys: string[]): Promise<string> {
+    const { api } = requireOpen()
+    const secret = newShareSecret()
+    const { shareId, kShare } = await deriveShareKeys(secret)
+    await api.createShare({ shareId, gameId, allowedKeys, wrapped: await wrapPayload(kShare, payload) })
+    await loadIssuedShares()
+    return formatShareCode(secret)
+  }
+
+  /** Creates a code that lets anyone download this one game. */
+  async function shareGame(gameId: string): Promise<string> {
+    const game = s.games.value.find((g) => g.id === gameId)
+    if (!game) throw new Error('Game not found')
+    const keys = game.files.map((f) => f.objectKey)
+    if (game.coverObjectKey) keys.push(game.coverObjectKey)
+    return issueShare({ v: 1, kind: 'game', game: structuredClone(toRaw(game)) }, game.id, keys)
+  }
+
+  /** Creates a code that lets anyone see and play the whole library (read-only). */
+  async function shareLibrary(): Promise<string> {
+    const { keys } = requireOpen()
+    return issueShare({ v: 1, kind: 'library', kLib: toBase64Url(keys.kLibRaw) }, null, [])
+  }
+
+  async function loadIssuedShares(): Promise<void> {
+    const { api } = requireOpen()
+    const rows = await api.listShares()
+    s.issuedShares.value = rows
+      .filter((r) => r.revokedAt === null)
+      .map((r) => ({
+        id: r.id,
+        kind: r.gameId ? 'game' : 'library',
+        gameId: r.gameId,
+        createdAt: r.createdAt,
+        label: r.gameId ? (s.games.value.find((g) => g.id === r.gameId)?.title ?? 'Deleted game') : 'Whole library',
+      }))
+  }
+
+  async function revokeShare(id: string): Promise<void> {
+    const { api } = requireOpen()
+    try {
+      await api.revokeShare(id)
+    } catch (err) {
+      if (!(err instanceof ApiError && err.status === 404)) {
+        s.notice.value = noticeFor(err)
+        return
+      }
+    }
+    s.issuedShares.value = s.issuedShares.value.filter((x) => x.id !== id)
+  }
+
   async function deleteGame(id: string): Promise<void> {
     const { api } = requireOpen()
     const game = s.games.value.find((g) => g.id === id)
     if (!game) return
     s.notice.value = null
+    try {
+      // Revoke this game's codes first so recipients get "no longer valid", not a broken download.
+      const rows = await api.listShares()
+      for (const r of rows) if (r.gameId === id && r.revokedAt === null) await api.revokeShare(r.id)
+    } catch (err) {
+      s.notice.value = noticeFor(err)
+      return
+    }
+    s.issuedShares.value = s.issuedShares.value.filter((x) => x.gameId !== id)
     try {
       // Manifest first: an orphaned object is better than a manifest entry pointing at nothing.
       await saveManifest((m) => {
@@ -508,6 +581,11 @@ export function useCloudLibrary() {
     downloadGameFiles,
     downloadToLocal,
     downloadProgress: s.downloadProgress,
+    issuedShares: s.issuedShares,
+    shareGame,
+    shareLibrary,
+    loadIssuedShares,
+    revokeShare,
     open,
     create,
     close,

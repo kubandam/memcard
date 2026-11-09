@@ -14,7 +14,7 @@ const CHUNKS_PER_REQUEST = 4
 const ENC_CHUNK = CHUNK_SIZE + GCM_TAG
 
 /** Downloads and decrypts one object, verifying every chunk and the total length. */
-export async function downloadObject(api: CloudApi, ref: CloudFileRef, kGame: Uint8Array, onProgress?: (done: number, total: number) => void): Promise<Uint8Array> {
+export async function downloadObject(api: Pick<CloudApi, 'getRange'>, ref: CloudFileRef, kGame: Uint8Array, onProgress?: (done: number, total: number) => void): Promise<Uint8Array> {
   const key = await deriveObjectKey(kGame, ref.objectKey)
   const out = new Uint8Array(ref.size)
   for (let first = 0; first < ref.chunks; first += CHUNKS_PER_REQUEST) {

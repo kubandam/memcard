@@ -1,5 +1,6 @@
 import type { LibraryUsage } from '~~/shared/types/library'
 import { toAuthHeader } from '~~/shared/utils/libraryKeys'
+import { fromBase64Url, toBase64Url } from '~~/shared/utils/bytes'
 
 export class ApiError extends Error {
   constructor(
@@ -22,6 +23,50 @@ export interface CloudApi {
   abortUpload(key: string, uploadId: string): Promise<void>
   getRange(key: string, start: number, endInclusive: number): Promise<Uint8Array>
   deleteObject(key: string): Promise<void>
+  createShare(input: { shareId: string; gameId: string | null; allowedKeys: string[]; wrapped: Uint8Array }): Promise<void>
+  listShares(): Promise<IssuedShareRow[]>
+  revokeShare(shareId: string): Promise<void>
+}
+
+export interface IssuedShareRow {
+  id: string
+  gameId: string | null
+  createdAt: number
+  revokedAt: number | null
+}
+
+/** Read-only access to a library through a share code. */
+export interface ShareReader {
+  getManifest(): Promise<{ bytes: Uint8Array; etag: string } | null>
+  getRange(key: string, start: number, endInclusive: number): Promise<Uint8Array>
+}
+
+export interface ShareLookup {
+  libraryId: string
+  gameId: string | null
+  wrapped: Uint8Array
+}
+
+export async function lookupShare(shareId: string, baseUrl = ''): Promise<ShareLookup> {
+  const res = await check(await fetch(`${baseUrl}/api/share/${shareId}`, { cache: 'no-store' }))
+  const body = (await res.json()) as { libraryId: string; gameId: string | null; wrapped: string }
+  return { libraryId: body.libraryId, gameId: body.gameId, wrapped: fromBase64Url(body.wrapped) }
+}
+
+export function createShareReader(opts: { shareId: string; libraryId: string; baseUrl?: string }): ShareReader {
+  const lib = `${opts.baseUrl ?? ''}/api/lib/${opts.libraryId}`
+  const auth = { authorization: `Share ${opts.shareId}` }
+  return {
+    async getManifest() {
+      const res = await check(await fetch(`${lib}/manifest`, { headers: auth, cache: 'no-store' }))
+      if (res.status === 204) return null
+      return { bytes: new Uint8Array(await res.arrayBuffer()), etag: res.headers.get('etag') ?? '' }
+    },
+    async getRange(key, start, endInclusive) {
+      const res = await check(await fetch(`${lib}/objects/${key}`, { headers: { ...auth, range: `bytes=${start}-${endInclusive}` }, cache: 'no-store' }))
+      return new Uint8Array(await res.arrayBuffer())
+    },
+  }
 }
 
 async function check(res: Response): Promise<Response> {
@@ -82,6 +127,15 @@ export function createCloudApi(opts: { libraryId: string; kAuth: Uint8Array; bas
     },
     async deleteObject(key) {
       await check(await fetch(obj(key), { method: 'DELETE', headers: auth }))
+    },
+    async createShare(input) {
+      await check(await fetch(`${lib}/shares`, { method: 'POST', headers: { ...auth, ...json }, body: JSON.stringify({ shareId: input.shareId, gameId: input.gameId, allowedKeys: input.allowedKeys, wrapped: toBase64Url(input.wrapped) }) }))
+    },
+    async listShares() {
+      return (await (await check(await fetch(`${lib}/shares`, { headers: auth, cache: 'no-store' }))).json()) as IssuedShareRow[]
+    },
+    async revokeShare(shareId) {
+      await check(await fetch(`${lib}/shares/${shareId}`, { method: 'DELETE', headers: auth }))
     },
   }
 }
