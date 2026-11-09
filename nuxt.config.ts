@@ -26,6 +26,10 @@ export default defineNuxtConfig({
     cloudflare: {
       deployConfig: true,
       nodeCompat: true,
+      wrangler: {
+        name: 'memcard',
+        routes: [{ pattern: 'memcard.devffice.com', custom_domain: true }],
+      },
     },
   },
 })
