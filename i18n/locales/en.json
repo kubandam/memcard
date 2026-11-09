@@ -188,5 +188,17 @@
     "download": "Download to this PC",
     "downloading": "Downloading {title}",
     "inMyGames": "In My games"
+  },
+  "share": {
+    "share": "Share",
+    "shareLibrary": "Share library",
+    "done": "Done",
+    "gameNote": "Anyone with this code can download this game. You can revoke it under Codes you issued.",
+    "libraryNote": "Anyone with this code can see and play every game in this library, including ones you add later, until you revoke it.",
+    "issuedTitle": "Codes you issued ({n})",
+    "issuedEmpty": "No active codes.",
+    "wholeLibrary": "Whole library",
+    "revoke": "Revoke",
+    "revokeConfirm": "Really revoke?"
   }
 }

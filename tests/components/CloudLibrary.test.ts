@@ -31,6 +31,11 @@ describe('CloudLibrary', () => {
       isInCloud: (g: LocalGame) => g.title === 'Crash' && g.sizeBytes === 100,
       downloadToLocal: vi.fn(async () => local('l9', 'Spyro', 200)),
       downloadProgress: ref(null),
+      shareGame: vi.fn(async () => 'MC-AAAA-BBBB-CCCC-DDDD'),
+      shareLibrary: vi.fn(async () => 'MC-LLLL-BBBB-CCCC-DDDD'),
+      issuedShares: ref([]),
+      loadIssuedShares: vi.fn(async () => {}),
+      revokeShare: vi.fn(async () => {}),
     })
     lib.games = [local('l1', 'Crash', 100), local('l2', 'Spyro', 200)]
   })
@@ -69,6 +74,23 @@ describe('CloudLibrary', () => {
     const btn = tiles[1]!.find('[data-download]')
     await btn.trigger('click')
     expect(cloud.downloadToLocal).toHaveBeenCalledWith('c2')
+  })
+
+  it('Share on a tile creates a game code and shows it', async () => {
+    const w = await mountSuspended(CloudLibrary)
+    await w.find('.tile [data-share]').trigger('click')
+    await flushPromises()
+    expect(cloud.shareGame).toHaveBeenCalledWith('c1')
+    expect(w.find('[data-share-code]').text()).toBe('MC-AAAA-BBBB-CCCC-DDDD')
+    expect(w.text()).toMatch(/download this game/i)
+  })
+
+  it('Share library shows a library code and warns it includes games added later', async () => {
+    const w = await mountSuspended(CloudLibrary)
+    await w.find('[data-share-library]').trigger('click')
+    await flushPromises()
+    expect(w.find('[data-share-code]').text()).toBe('MC-LLLL-BBBB-CCCC-DDDD')
+    expect(w.text()).toMatch(/you add later/i)
   })
 
   it('resumes interrupted uploads when shown', async () => {

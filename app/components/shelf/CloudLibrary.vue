@@ -5,7 +5,7 @@ import { formatBytes } from '~/utils/format'
 import { listGames } from '~/utils/localDb'
 
 const { t } = useI18n()
-const { games, usage, uploadProgress, downloadProgress, notice, recoveryKey, close, uploadGame, deleteGame, renameGame, resumeUploads, coverUrl, isInCloud, downloadToLocal } = useCloudLibrary()
+const { games, usage, uploadProgress, downloadProgress, notice, recoveryKey, close, uploadGame, deleteGame, renameGame, resumeUploads, coverUrl, isInCloud, downloadToLocal, shareGame, shareLibrary } = useCloudLibrary()
 const emit = defineEmits<{ downloaded: [] }>()
 
 const pickerOpen = ref(false)
@@ -15,6 +15,30 @@ const renaming = ref<string | null>(null)
 const renameValue = ref('')
 const confirmingDelete = ref<string | null>(null)
 const localGames = ref<LocalGame[]>([])
+const shareResult = ref<{ code: string; note: string } | null>(null)
+const sharing = ref(false)
+
+async function onShareGame(id: string) {
+  sharing.value = true
+  try {
+    shareResult.value = { code: await shareGame(id), note: t('share.gameNote') }
+  } catch {
+    shareResult.value = null
+  } finally {
+    sharing.value = false
+  }
+}
+
+async function onShareLibrary() {
+  sharing.value = true
+  try {
+    shareResult.value = { code: await shareLibrary(), note: t('share.libraryNote') }
+  } catch {
+    shareResult.value = null
+  } finally {
+    sharing.value = false
+  }
+}
 
 async function loadLocal() {
   localGames.value = await listGames()
@@ -82,11 +106,14 @@ async function onDelete(id: string) {
       </div>
       <div class="cloud-library__actions">
         <button type="button" data-open-upload class="pill" :disabled="!!uploadProgress" @click="openPicker">{{ t('cloud.upload') }}</button>
+        <button type="button" data-share-library class="pill pill--ghost" :disabled="sharing" @click="onShareLibrary">{{ t('share.shareLibrary') }}</button>
         <button type="button" data-close class="link-button label" @click="close">{{ t('cloud.close') }}</button>
       </div>
     </div>
 
     <Notice v-if="notice" :kind="notice.kind">{{ t(notice.key) }}</Notice>
+    <ShareCodeBox v-if="shareResult" :code="shareResult.code" :note="shareResult.note" @close="shareResult = null" />
+    <IssuedShares />
 
     <div v-if="uploadProgress" class="cloud-library__progress" role="status">
       <span class="label">{{ t('cloud.uploading', { title: uploadProgress.title }) }} · {{ formatBytes(uploadProgress.done) }} / {{ formatBytes(uploadProgress.total) }}</span>
@@ -115,6 +142,7 @@ async function onDelete(id: string) {
             <button v-else type="button" data-download class="link-button label" :disabled="!!downloadProgress" @click="download(game.id)">
               {{ downloadProgress?.gameId === game.id ? `${Math.round((downloadProgress.done / Math.max(1, downloadProgress.total)) * 100)} %` : t('cloud.download') }}
             </button>
+            <button type="button" data-share class="link-button label" :disabled="sharing" @click="onShareGame(game.id)">{{ t('share.share') }}</button>
             <button type="button" class="link-button label" @click="(renaming = game.id), (renameValue = game.title)">{{ t('home.rename') }}</button>
             <button type="button" class="link-button label" :class="{ 'link-button--danger': confirmingDelete === game.id }" @click="onDelete(game.id)">
               {{ confirmingDelete === game.id ? t('home.confirmDelete') : t('home.delete') }}
@@ -217,6 +245,12 @@ async function onDelete(id: string) {
   font-size: 12px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
+}
+
+.pill--ghost {
+  background: transparent;
+  color: var(--fg);
+  border-color: var(--line-strong);
 }
 
 .pill:disabled {
