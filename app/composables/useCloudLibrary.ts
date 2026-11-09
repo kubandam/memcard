@@ -125,7 +125,8 @@ export function useCloudLibrary() {
   function setManifest(manifest: LibraryManifest, etag: string | null) {
     s.manifest = manifest
     s.etag = etag
-    s.games.value = [...manifest.games]
+    // Recently played first, then newest additions.
+    s.games.value = [...manifest.games].sort((a, b) => (b.lastPlayedAt ?? 0) - (a.lastPlayedAt ?? 0) || b.createdAt - a.createdAt)
   }
 
   async function loadManifest(): Promise<void> {
@@ -598,6 +599,18 @@ export function useCloudLibrary() {
     }
   }
 
+  /** Records that a game was started (shown as "played …" on every device). Best effort. */
+  async function markPlayed(id: string): Promise<void> {
+    try {
+      await saveManifest((m) => {
+        const g = m.games.find((x) => x.id === id)
+        if (g) g.lastPlayedAt = Date.now()
+      })
+    } catch {
+      // Not worth bothering the player about.
+    }
+  }
+
   async function renameGame(id: string, title: string): Promise<void> {
     const trimmed = title.trim()
     if (!trimmed) return
@@ -626,6 +639,7 @@ export function useCloudLibrary() {
     resumeUploads,
     deleteGame,
     renameGame,
+    markPlayed,
     coverUrl,
     downloadGameFiles,
     downloadToLocal,

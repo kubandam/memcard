@@ -15,13 +15,19 @@ const { t } = useI18n()
       <span class="tile__spine" aria-hidden="true" />
       <span class="tile__play label">{{ t('tile.playShort') }}</span>
     </a>
-    <h3 class="tile__title display">{{ game.title }}</h3>
+    <div class="tile__head">
+      <h3 class="tile__title display">{{ game.title }}</h3>
+      <details v-if="$slots.actions" class="tile__menu">
+        <summary :aria-label="t('tile.more')">⋯</summary>
+        <div class="tile__menu-list">
+          <slot name="actions" />
+        </div>
+      </details>
+    </div>
     <div class="tile__meta label">
       <span>{{ formatBytes(game.sizeBytes) }}</span>
-      <span>{{ t('tile.played') }} {{ formatRelative(game.lastPlayedAt) }}</span>
-    </div>
-    <div v-if="$slots.actions" class="tile__actions">
-      <slot name="actions" />
+      <span>·</span>
+      <span>{{ game.lastPlayedAt ? `${t('tile.played')} ${formatRelative(game.lastPlayedAt)}` : t('tile.notPlayed') }}</span>
     </div>
   </article>
 </template>
@@ -103,8 +109,71 @@ const { t } = useI18n()
   opacity: 1;
 }
 
-.tile__title {
+.tile__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
   margin: 12px 0 2px;
+}
+
+.tile__menu {
+  position: relative;
+  margin-left: auto;
+  flex: none;
+}
+
+.tile__menu summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 0 6px;
+  border-radius: var(--radius);
+  font-size: 20px;
+  line-height: 1;
+  color: var(--fg-muted);
+}
+
+.tile__menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.tile__menu[open] summary,
+.tile__menu summary:hover {
+  color: var(--fg);
+  background: var(--bg-panel);
+}
+
+.tile__menu-list {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 5;
+  min-width: 180px;
+  display: grid;
+  gap: 2px;
+  padding: 6px;
+  background: var(--bg-panel);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--tile-shadow);
+}
+
+.tile__menu-list :deep(button),
+.tile__menu-list :deep(label),
+.tile__menu-list :deep(span) {
+  display: block;
+  text-align: left;
+  text-decoration: none;
+  padding: 8px 10px;
+  border-radius: var(--radius);
+}
+
+.tile__menu-list :deep(button:hover),
+.tile__menu-list :deep(label:hover) {
+  background: var(--bg);
+}
+
+.tile__title {
+  margin: 0;
   font-size: 18px;
   line-height: 1.15;
   border-left: 3px solid var(--tile-accent);
@@ -117,17 +186,9 @@ const { t } = useI18n()
 
 .tile__meta {
   display: flex;
-  justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
+  margin-top: 4px;
   padding-left: 13px;
   font-size: 10px;
-}
-
-.tile__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-top: 8px;
-  padding-left: 13px;
 }
 </style>

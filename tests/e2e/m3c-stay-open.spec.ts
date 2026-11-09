@@ -6,7 +6,7 @@ test('Stay open on this PC survives a new tab; Close library forgets it', async 
   const ctx = await browser.newContext()
   const a = await ctx.newPage()
   await a.goto('/')
-  await expect(a.getByRole('progressbar').first()).toBeVisible()
+  await expect(a.locator('[data-hydrated]')).toBeAttached()
   await a.locator('[data-start-create]').click()
   await a.locator('[data-invite]').fill(INVITE)
   await a.locator('[data-wrote]').check()
@@ -23,7 +23,7 @@ test('Stay open on this PC survives a new tab; Close library forgets it', async 
 
   const c = await ctx.newPage()
   await c.goto('/')
-  await expect(c.getByRole('progressbar').first()).toBeVisible()
+  await expect(c.locator('[data-hydrated]')).toBeAttached()
   await expect(c.locator('.cloud-panel')).toBeVisible()
   await expect(c.locator('.cloud-library')).toHaveCount(0)
   await ctx.close()

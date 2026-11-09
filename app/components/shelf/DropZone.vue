@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 
+defineProps<{ compact?: boolean }>()
 const emit = defineEmits<{ files: [files: File[]] }>()
 const { t } = useI18n()
 const dragging = ref(false)
@@ -59,16 +60,22 @@ function walk(entry: FileSystemEntry, out: File[]): Promise<void> {
   <div
     data-dropzone
     class="drop-zone"
-    :class="{ 'drop-zone--active': dragging }"
+    :class="{ 'drop-zone--active': dragging, 'drop-zone--compact': compact }"
     @dragenter.prevent="dragging = true"
     @dragover.prevent="dragging = true"
     @dragleave.prevent="dragging = false"
     @drop.prevent="onDrop"
   >
-    <p class="label drop-zone__title">{{ t('drop.title') }}</p>
-    <p class="drop-zone__hint">{{ t('drop.hint') }}</p>
-    <button type="button" class="drop-zone__button label" @click="input?.click()">{{ t('drop.button') }}</button>
-    <p class="label drop-zone__privacy">{{ t('drop.privacy') }}</p>
+    <template v-if="compact">
+      <span class="label drop-zone__title">{{ t('drop.compactTitle') }}</span>
+      <button type="button" class="drop-zone__button label" @click="input?.click()">{{ t('drop.button') }}</button>
+    </template>
+    <template v-else>
+      <p class="label drop-zone__title">{{ t('drop.title') }}</p>
+      <p class="drop-zone__hint">{{ t('drop.hint') }}</p>
+      <button type="button" class="drop-zone__button label" @click="input?.click()">{{ t('drop.button') }}</button>
+      <p class="label drop-zone__privacy">{{ t('drop.privacy') }}</p>
+    </template>
     <input ref="input" type="file" multiple :accept="ACCEPT" class="visually-hidden" @change="onChange" />
   </div>
 </template>
@@ -82,6 +89,19 @@ function walk(entry: FileSystemEntry, out: File[]): Promise<void> {
   border: 1px dashed var(--line-strong);
   border-radius: var(--radius);
   transition: border-color 120ms ease;
+}
+
+.drop-zone--compact {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 16px;
+  margin-top: 12px;
+}
+
+.drop-zone--compact .drop-zone__title {
+  margin: 0;
 }
 
 .drop-zone--active {

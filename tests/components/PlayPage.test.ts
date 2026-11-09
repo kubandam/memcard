@@ -30,6 +30,7 @@ const cloudMock = vi.hoisted(() => ({
   restore: async () => {},
   downloadGameFiles: async (_g: unknown, _p?: (d: number, t: number) => void) => [new File([new Uint8Array(4)], 'Cloud Game.chd')] as File[],
   getSaveCalls: 0,
+  markPlayed: async () => {},
   saveApi() {
     return {
       getSave: async () => { cloudMock.getSaveCalls++; return null },

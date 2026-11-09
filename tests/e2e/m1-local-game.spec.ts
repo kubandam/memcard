@@ -11,7 +11,7 @@ test.skip(!existsSync(FIXTURE), 'Fixture missing: run `pnpm fixture` first (see 
 /** The storage meter only renders after onMounted, so its presence proves the page is hydrated. */
 async function openLibrary(page: import('@playwright/test').Page) {
   await page.goto('/')
-  await expect(page.getByRole('progressbar')).toBeVisible()
+  await expect(page.locator('[data-hydrated]')).toBeAttached()
 }
 
 test('add a local game, keep it across visits, play it without any network upload', async ({ browser }) => {

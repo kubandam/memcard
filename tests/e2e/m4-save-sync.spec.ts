@@ -9,7 +9,7 @@ test.setTimeout(240_000)
 
 async function openHome(page: Page) {
   await page.goto('/')
-  await expect(page.getByRole('progressbar').first()).toBeVisible()
+  await expect(page.locator('[data-hydrated]')).toBeAttached()
 }
 
 async function playCloud(page: Page) {

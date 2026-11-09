@@ -22,3 +22,12 @@ describe('DropZone', () => {
     expect(wrapper.emitted('files')).toEqual([[[file]]])
   })
 })
+
+describe('DropZone compact', () => {
+  it('compact mode is a single row that still accepts files', async () => {
+    const wrapper = await mountSuspended(DropZone, { props: { compact: true } })
+    expect(wrapper.find('[data-dropzone]').classes()).toContain('drop-zone--compact')
+    expect(wrapper.find('input[type=file]').exists()).toBe(true)
+    expect(wrapper.text()).not.toMatch(/We recommend/)
+  })
+})

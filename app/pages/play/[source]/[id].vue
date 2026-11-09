@@ -99,6 +99,7 @@ async function loadCloud(gameId: string) {
   if (cloud.status.value !== 'open') return void (libraryClosed.value = true)
   const game = cloud.games.value.find((g) => g.id === gameId)
   if (!game) return void (notFound.value = true)
+  void cloud.markPlayed(game.id)
   title.value = game.title
   setPhase('reading')
   const files = await cloud.downloadGameFiles(game, (done, total) => setSubProgress('reading', 'loading', done / Math.max(1, total)))

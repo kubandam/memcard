@@ -23,7 +23,7 @@ describe('GameTile', () => {
     })
     expect(wrapper.text()).toContain('Magic Castle')
     expect(wrapper.text()).toContain('1.2 GB')
-    expect(wrapper.text()).toContain('never')
+    expect(wrapper.text()).toMatch(/not played yet/i)
     const link = wrapper.find('a')
     expect(link.attributes('href')).toBe('/play/local/g1')
     // The title sits under the cover as a real heading, not inside a tiny label.
@@ -41,5 +41,19 @@ describe('GameTile', () => {
       },
     })
     expect(wrapper.find('img').attributes('src')).toBe('blob:http://localhost/abc')
+  })
+})
+
+describe('GameTile menu', () => {
+  it('keeps secondary actions in a compact menu and shows one meta line', async () => {
+    const wrapper = await mountSuspended(GameTile, {
+      props: { game: { title: 'Menu Game', sizeBytes: 5e6, lastPlayedAt: null }, href: '/play/x' },
+      slots: { actions: '<button data-x>Rename</button>' },
+    })
+    const menu = wrapper.find('details.tile__menu')
+    expect(menu.exists()).toBe(true)
+    expect(menu.find('summary').attributes('aria-label')).toMatch(/more/i)
+    expect(menu.find('[data-x]').exists()).toBe(true)
+    expect(wrapper.find('.tile__meta').text()).toMatch(/5 MB/)
   })
 })

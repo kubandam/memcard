@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import type { LocalGame } from '~~/shared/types/game'
 
 definePageMeta({ layout: 'shelf' })
@@ -20,9 +20,14 @@ const renameValue = ref('')
 const confirmingDelete = ref<string | null>(null)
 
 const cloud = useCloudLibrary()
+/** First-time visitors get the big drop area; once there is a library or local games it is a single row. */
+const compactAdd = computed(() => cloud.status.value === 'open' || games.value.length > 0)
 const shared = useSharedLibraries()
 
+const hydrated = ref(false)
+
 onMounted(() => {
+  hydrated.value = true
   refresh()
   cloud.restore()
   shared.restore()
@@ -57,7 +62,7 @@ async function confirmDelete(id: string) {
 </script>
 
 <template>
-  <div>
+  <div :data-hydrated="hydrated ? '' : undefined">
     <h1 class="visually-hidden">{{ siteName }}</h1>
 
     <section v-if="freeGames.length" aria-labelledby="free-games">
@@ -75,10 +80,16 @@ async function confirmDelete(id: string) {
         <CloudLibrary v-if="cloud.status.value === 'open'" @downloaded="refresh" />
         <CloudPanel v-else />
       </ClientOnly>
-      <div class="redeem-wrap">
-        <p class="label">{{ t('share.haveCode') }}</p>
-        <ClientOnly><RedeemCode @downloaded="refresh" /></ClientOnly>
-      </div>
+      <ClientOnly>
+        <details v-if="cloud.status.value === 'open'" class="redeem-toggle">
+          <summary class="label">{{ t('share.haveCodeFromFriend') }}</summary>
+          <RedeemCode @downloaded="refresh" />
+        </details>
+        <div v-else class="redeem-wrap">
+          <p class="label">{{ t('share.haveCode') }}</p>
+          <RedeemCode @downloaded="refresh" />
+        </div>
+      </ClientOnly>
     </section>
 
     <ClientOnly>
@@ -133,11 +144,11 @@ async function confirmDelete(id: string) {
           </template>
         </GameTile>
       </GameGrid>
-      <p v-else class="empty">{{ t('home.empty') }}</p>
+      <p v-else-if="!compactAdd" class="empty">{{ t('home.empty') }}</p>
 
-      <StorageMeter v-if="storage" :usage="storage.usage" :quota="storage.quota" />
+      <StorageMeter v-if="storage && games.length" :usage="storage.usage" :quota="storage.quota" />
 
-      <DropZone @files="addFiles" />
+      <DropZone :compact="compactAdd" @files="addFiles" />
     </section>
   </div>
 </template>
@@ -166,6 +177,15 @@ async function confirmDelete(id: string) {
   display: flex;
   gap: 18px;
   align-items: baseline;
+}
+
+.redeem-toggle {
+  margin-top: 24px;
+}
+
+.redeem-toggle summary {
+  cursor: pointer;
+  margin-bottom: 10px;
 }
 
 .redeem-wrap {

@@ -10,7 +10,7 @@ test.setTimeout(180_000)
 
 async function openHome(page: Page) {
   await page.goto('/')
-  await expect(page.getByRole('progressbar').first()).toBeVisible()
+  await expect(page.locator('[data-hydrated]')).toBeAttached()
 }
 
 test('create, upload, open on a second PC, play from cloud, download, wrong password', async ({ browser }) => {
@@ -59,6 +59,7 @@ test('create, upload, open on a second PC, play from cloud, download, wrong pass
   await b.locator('[data-secret]').fill(passphrase)
   await b.locator('form[data-open]').evaluate((f: HTMLFormElement) => f.requestSubmit())
   await expect(b.locator('a[href^="/play/cloud/"]')).toHaveCount(1, { timeout: 30_000 })
+  await b.locator('.cloud-library .tile details summary').first().click()
   await b.locator('[data-download]').click()
   await expect(b.locator('a[href^="/play/local/"]')).toHaveCount(1, { timeout: 60_000 })
   await b.locator('a[href^="/play/local/"]').click()

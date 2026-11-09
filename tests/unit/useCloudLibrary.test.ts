@@ -352,3 +352,30 @@ describe('useCloudLibrary — remembered key and flaky networks', () => {
     expect(third.status.value).toBe('open')
   }, 30_000)
 })
+
+describe('useCloudLibrary — last played', () => {
+  beforeEach(() => {
+    globalThis.indexedDB = new IDBFactory()
+    __resetDbForTests()
+    __resetCloudForTests()
+    sessionStorageShim()
+  })
+
+  it('markPlayed stores lastPlayedAt in the manifest and sorts recent games first', async () => {
+    const f = createFakeCloudApi()
+    __setCloudApiFactory(() => f.api)
+    const lib = useCloudLibrary()
+    await lib.create(PASS, 'good')
+    await lib.uploadGame(await localGame([['a.chd', 100]], 'Alpha'))
+    await lib.uploadGame(await localGame([['b.chd', 100]], 'Beta'))
+    const alpha = lib.games.value.find((g) => g.title === 'Alpha')!
+    await lib.markPlayed(alpha.id)
+    expect(lib.games.value[0]!.title).toBe('Alpha')
+    expect(lib.games.value[0]!.lastPlayedAt).toBeTypeOf('number')
+    // Another PC sees it after reopening.
+    __resetCloudForTests()
+    const other = useCloudLibrary()
+    await other.open(PASS)
+    expect(other.games.value[0]!.title).toBe('Alpha')
+  }, 60_000)
+})

@@ -10,7 +10,7 @@ test.setTimeout(240_000)
 
 async function openHome(page: Page) {
   await page.goto('/')
-  await expect(page.getByRole('progressbar').first()).toBeVisible()
+  await expect(page.locator('[data-hydrated]')).toBeAttached()
 }
 
 async function redeem(page: Page, code: string) {
@@ -44,6 +44,7 @@ test('owner shares a game and the library; recipient downloads, plays shared, th
   await owner.locator('[data-open-upload]').click()
   await owner.locator('[data-upload-candidate]').filter({ hasText: /controllers/i }).click()
   await expect(owner.locator('.cloud-library .tile')).toHaveCount(1, { timeout: 60_000 })
+  await owner.locator('.cloud-library .tile details summary').first().click()
   await owner.locator('.cloud-library .tile [data-share]').click()
   const gameCode = (await owner.locator('[data-share-code]').innerText()).trim()
   await owner.locator('[data-share-library]').click()

@@ -61,13 +61,16 @@
   "tile": {
     "play": "Play {title}",
     "played": "Played",
-    "playShort": "Play"
+    "playShort": "Play",
+    "more": "More actions",
+    "notPlayed": "Not played yet"
   },
   "drop": {
     "title": "Add your own game",
     "hint": "Drop .chd, .pbp, .iso, .img, .bin + .cue, .m3u, .zip or .7z. We recommend .chd — it is the smallest.",
     "button": "Choose files",
-    "privacy": "Nothing is uploaded. Files stay in this browser."
+    "privacy": "Nothing is uploaded. Files stay in this browser.",
+    "compactTitle": "Add a game from this computer — it stays in this browser"
   },
   "storage": {
     "used": "{used} used of {total}"
@@ -225,7 +228,8 @@
     "emptyLibrary": "No games in this library yet.",
     "haveCode": "Have a code?",
     "tooManyCodes": "Too many active codes. Revoke some under Codes you issued, then try again.",
-    "gameGone": "This game was removed from the shared library."
+    "gameGone": "This game was removed from the shared library.",
+    "haveCodeFromFriend": "Have a code from a friend?"
   },
   "save": {
     "synced": "Saved to cloud · {time}",
