@@ -86,3 +86,87 @@ describe('useCloudLibrary', () => {
     expect(lib.games.value.map((g) => g.id)).toEqual(['g'])
   }, 30_000)
 })
+
+import { addGame, getUploadStates, setCover, getSetting } from '../../app/utils/localDb'
+import { downloadObject } from '../../app/utils/cloudDownload'
+import { fromBase64Url } from '../../shared/utils/bytes'
+
+const MiB = 1024 * 1024
+async function localGame(files: [string, number][], title = 'Two Files') {
+  const g = await addGame({ title, kind: files.length > 1 ? 'multi' : 'single', primaryName: files[0]![0], files: files.map(([n, size]) => new File([new Uint8Array(size).fill(n.length)], n)), totalBytes: files.reduce((a, [, s]) => a + s, 0) })
+  return g
+}
+
+describe('useCloudLibrary — uploads', () => {
+  let fake: ReturnType<typeof createFakeCloudApi>
+  beforeEach(async () => {
+    globalThis.indexedDB = new IDBFactory()
+    __resetDbForTests()
+    __resetCloudForTests()
+    sessionStorageShim()
+  })
+
+  async function openWith(f: ReturnType<typeof createFakeCloudApi>) {
+    fake = f
+    __setCloudApiFactory(() => f.api)
+    const lib = useCloudLibrary()
+    await lib.create(PASS, 'good')
+    return lib
+  }
+
+  it('uploads every file (and the cover) of a local game and records it in the manifest', async () => {
+    const lib = await openWith(createFakeCloudApi())
+    const g = await localGame([['g.cue', 20], ['g.bin', 5 * MiB]])
+    await setCover(g.id, new Blob([new Uint8Array(30)], { type: 'image/png' }))
+    const fresh = (await import('../../app/utils/localDb')).getGame
+    await lib.uploadGame((await fresh(g.id))!)
+    expect(lib.games.value).toHaveLength(1)
+    const entry = lib.games.value[0]!
+    expect(entry.files.map((f) => f.name)).toEqual(['g.cue', 'g.bin'])
+    expect(entry.coverObjectKey).toBeTruthy()
+    expect(fromBase64Url(entry.kGame)).toHaveLength(32)
+    expect(fake.objects.size).toBe(3)
+    const bin = await downloadObject(fake.api, entry.files[1]!, fromBase64Url(entry.kGame))
+    expect(bin.length).toBe(5 * MiB)
+    expect(await getUploadStates(lib.libraryId.value!)).toEqual([])
+    expect(lib.isInCloud((await fresh(g.id))!)).toBe(true)
+  }, 60_000)
+
+  it('quota on the second file deletes what was uploaded and leaves the manifest unchanged', async () => {
+    const lib = await openWith(createFakeCloudApi({ quotaBytes: 6 * MiB }))
+    const g = await localGame([['a.chd', 4 * MiB], ['b.chd', 4 * MiB]], 'Big')
+    await lib.uploadGame(g)
+    expect(lib.games.value).toEqual([])
+    expect(fake.objects.size).toBe(0)
+    expect(lib.notice.value?.key).toBe('cloud.quota')
+  }, 60_000)
+
+  it('resumes an interrupted upload from local storage after a reload', async () => {
+    const f = createFakeCloudApi()
+    const lib = await openWith(f)
+    const g = await localGame([['big.chd', 40 * MiB]], 'Resume Me')
+    let n = 0
+    const realPart = f.api.uploadPart
+    f.api.uploadPart = async (...a) => { if (++n === 2) throw new Error('network'); return realPart(...a) }
+    await lib.uploadGame(g)
+    expect(lib.notice.value?.key).toBe('cloud.uploadFailed')
+    expect(lib.games.value).toEqual([])
+    f.api.uploadPart = realPart
+    f.calls.uploadPart.length = 0
+    __resetCloudForTests()
+    const again = useCloudLibrary()
+    await again.restore()
+    await again.resumeUploads()
+    expect(f.calls.uploadPart).toEqual([2, 3])
+    expect(again.games.value.map((x) => x.title)).toEqual(['Resume Me'])
+    expect(await getSetting(`cloudPending.${again.libraryId.value}`)).toEqual([])
+  }, 60_000)
+
+  it('deleteGame removes objects and the manifest entry', async () => {
+    const lib = await openWith(createFakeCloudApi())
+    await lib.uploadGame(await localGame([['x.chd', 1000]], 'X'))
+    await lib.deleteGame(lib.games.value[0]!.id)
+    expect(lib.games.value).toEqual([])
+    expect(fake.objects.size).toBe(0)
+  }, 60_000)
+})

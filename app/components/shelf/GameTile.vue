@@ -3,7 +3,7 @@ import type { LocalGame } from '~~/shared/types/game'
 import { accentHue, placeholderStyle } from '~/utils/coverPlaceholder'
 import { formatBytes, formatRelative } from '~/utils/format'
 
-const props = defineProps<{ game: LocalGame; href: string; coverUrl?: string }>()
+const props = defineProps<{ game: Pick<LocalGame, 'title' | 'sizeBytes' | 'lastPlayedAt'>; href: string; coverUrl?: string }>()
 const { t } = useI18n()
 </script>
 

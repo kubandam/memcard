@@ -172,6 +172,14 @@
     "cannotDecrypt": "The library could not be decrypted with this passphrase.",
     "gamesCount": "{n} games · encrypted",
     "close": "Close library",
-    "recoveryDone": "I saved it"
+    "recoveryDone": "I saved it",
+    "quota": "Not enough online space for this game. The free tier holds about 9 GB in total; converting to .chd makes games 2–3× smaller.",
+    "uploadFailed": "The upload stopped. It will continue from where it left off the next time you open the library.",
+    "upload": "Upload a game",
+    "uploading": "Encrypting and uploading {title}",
+    "pickTitle": "Choose a game from My games",
+    "pickEmpty": "All your local games are already online.",
+    "pickHint": "Add new games to My games first; they are encrypted in this browser before upload.",
+    "empty": "No games online yet. Upload one from My games."
   }
 }
