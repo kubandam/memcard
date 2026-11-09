@@ -23,13 +23,16 @@ export interface LibraryKeys {
   libraryId: string
   kAuth: Uint8Array
   kLib: CryptoKey
+  /** Raw bytes of kLib, needed only to wrap it into a library share code. */
+  kLibRaw: Uint8Array
 }
 
 export async function deriveLibraryKeys(kRoot: Uint8Array): Promise<LibraryKeys> {
   const libraryId = encodeBase32(await hkdf(kRoot, 'id', 16))
   const kAuth = await hkdf(kRoot, 'auth', 32)
-  const kLib = await crypto.subtle.importKey('raw', (await hkdf(kRoot, 'lib', 32)) as BufferSource, 'AES-GCM', false, ['encrypt', 'decrypt'])
-  return { libraryId, kAuth, kLib }
+  const kLibRaw = await hkdf(kRoot, 'lib', 32)
+  const kLib = await crypto.subtle.importKey('raw', kLibRaw as BufferSource, 'AES-GCM', false, ['encrypt', 'decrypt'])
+  return { libraryId, kAuth, kLib, kLibRaw }
 }
 
 export async function authVerifierHex(kAuth: Uint8Array): Promise<string> {
