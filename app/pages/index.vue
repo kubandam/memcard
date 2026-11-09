@@ -10,7 +10,7 @@ useHead({ title: t('home.title') })
 // Free games arrive with the M2 manifest; the section is hidden while empty.
 const freeGames = ref<LocalGame[]>([])
 
-const { games, saving, notice, storage, sessionGame, refresh, addFiles, rename, remove } = useLocalLibrary()
+const { games, saving, notice, storage, sessionGame, coverUrls, coverBusy, refresh, addFiles, rename, remove, setCoverFromFile, findCoverOnline } = useLocalLibrary()
 
 const renaming = ref<string | null>(null)
 const renameValue = ref('')
@@ -27,6 +27,13 @@ async function commitRename() {
   if (!renaming.value) return
   await rename(renaming.value, renameValue.value)
   renaming.value = null
+}
+
+function onCoverPicked(id: string, e: Event) {
+  const el = e.target as HTMLInputElement
+  const file = el.files?.[0]
+  el.value = ''
+  if (file) setCoverFromFile(id, file)
 }
 
 async function confirmDelete(id: string) {
@@ -51,10 +58,10 @@ async function confirmDelete(id: string) {
     </section>
 
     <section aria-labelledby="my-games">
-      <SectionLabel>
-        <span id="my-games">{{ t('home.myGames') }}</span>
-        <template #meta>{{ t('home.storedLocally') }}</template>
-      </SectionLabel>
+      <div class="library-head">
+        <h2 id="my-games" class="display library-head__title">{{ t('home.myGames') }}</h2>
+        <span class="label">{{ games.length ? t('home.count', { n: games.length }) : '' }} · {{ t('home.storedLocally') }}</span>
+      </div>
 
       <Notice v-if="notice" :kind="notice.kind">
         {{ t(notice.key, notice.params ?? {}) }}
@@ -63,7 +70,7 @@ async function confirmDelete(id: string) {
       <p v-if="saving" data-saving class="label saving" aria-live="polite">{{ t('home.saving') }}</p>
 
       <GameGrid v-if="games.length">
-        <GameTile v-for="game in games" :key="game.id" :game="game" :href="`/play/local/${game.id}`">
+        <GameTile v-for="game in games" :key="game.id" :game="game" :href="`/play/local/${game.id}`" :cover-url="coverUrls[game.id]">
           <template #actions>
             <template v-if="renaming === game.id">
               <input v-model="renameValue" class="rename-input" :aria-label="t('home.renameLabel')" @keyup.enter="commitRename" @keyup.escape="renaming = null" />
@@ -71,6 +78,13 @@ async function confirmDelete(id: string) {
             </template>
             <template v-else>
               <button type="button" class="link-button label" @click="startRename(game)">{{ t('home.rename') }}</button>
+              <label class="link-button label">
+                {{ t('home.cover') }}
+                <input type="file" accept="image/*" class="visually-hidden" @change="onCoverPicked(game.id, $event)" />
+              </label>
+              <button type="button" data-find-cover class="link-button label" :title="t('home.findCoverHint')" :disabled="coverBusy === game.id" @click="findCoverOnline(game)">
+                {{ coverBusy === game.id ? t('home.findingCover') : t('home.findCover') }}
+              </button>
               <button type="button" class="link-button label" :class="{ 'link-button--danger': confirmingDelete === game.id }" @click="confirmDelete(game.id)">
                 {{ confirmingDelete === game.id ? t('home.confirmDelete') : t('home.delete') }}
               </button>
@@ -93,6 +107,20 @@ async function confirmDelete(id: string) {
   margin: 0;
 }
 
+.library-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin: 36px 0 20px;
+}
+
+.library-head__title {
+  margin: 0;
+  font-size: 34px;
+}
+
 .link-button {
   background: none;
   border: 0;
@@ -104,6 +132,11 @@ async function confirmDelete(id: string) {
 
 .link-button--danger {
   color: var(--accent);
+}
+
+.link-button:disabled {
+  opacity: 0.5;
+  cursor: progress;
 }
 
 .rename-input {

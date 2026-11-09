@@ -44,11 +44,17 @@
     "save": "Save",
     "delete": "Delete",
     "confirmDelete": "Really delete?",
-    "saving": "Saving to this browser…"
+    "saving": "Saving to this browser…",
+    "count": "{n} games",
+    "cover": "Cover",
+    "findCover": "Find cover",
+    "findingCover": "Finding…",
+    "findCoverHint": "Looks up box art on libretro-thumbnails. Sends this game's title to that service; nothing else leaves your browser."
   },
   "tile": {
     "play": "Play {title}",
-    "played": "Played"
+    "played": "Played",
+    "playShort": "Play"
   },
   "drop": {
     "title": "Add your own game",
@@ -68,7 +74,8 @@
     "mixed": "These files do not belong to one game: {details}. Add one game at a time.",
     "quota": "This browser is out of storage space, so the game could not be saved. You can still play it right now.",
     "unavailable": "Storage is unavailable in this browser (private mode?). Games cannot be kept between visits.",
-    "emptyTitle": "A title cannot be empty."
+    "emptyTitle": "A title cannot be empty.",
+    "notAnImage": "That file is not an image."
   },
   "warnings": {
     "largeFile": "This is a large image. The emulator keeps the whole file in memory, so low-memory devices may struggle. Converting to .chd makes it much smaller."
@@ -118,5 +125,9 @@
     "clearConfirm": "Really delete all local games, saves and BIOS?",
     "cleared": "All local data was removed.",
     "controls": "Controls"
+  },
+  "covers": {
+    "notFound": "No box art found for \"{title}\". You can add your own image with Cover.",
+    "failed": "Could not fetch the cover. Check your connection and try again."
   }
 }

@@ -1,7 +1,8 @@
 import { ref, type Ref } from 'vue'
 import type { ClassifiedGame, LocalGame } from '~~/shared/types/game'
 import { classifyFiles } from '~/utils/gameFiles'
-import { StorageError, addGame, deleteGame, estimateStorage, listGames, renameGame, requestPersist } from '~/utils/localDb'
+import { StorageError, addGame, deleteGame, estimateStorage, getBlob, listGames, renameGame, requestPersist, setCover } from '~/utils/localDb'
+import { THUMBNAIL_RAW_BASE, pickCover } from '~~/shared/utils/coverMatch'
 
 export interface LibraryNotice {
   kind: 'error' | 'info'
@@ -25,11 +26,27 @@ export function useLocalLibrary() {
   const notice = ref<LibraryNotice | null>(null)
   const storage = ref<{ usage: number; quota: number } | null>(null)
   const saving = ref(false)
+  /** Object URLs for stored covers, keyed by game id; revoked when the list refreshes. */
+  const coverUrls = ref<Record<string, string>>({})
+  const coverBusy = ref<string | null>(null)
+  let thumbnailIndex: string[] | null = null
+
+  async function loadCovers(list: LocalGame[]) {
+    for (const url of Object.values(coverUrls.value)) URL.revokeObjectURL(url)
+    const next: Record<string, string> = {}
+    for (const game of list) {
+      if (!game.coverBlobKey) continue
+      const blob = await getBlob(game.coverBlobKey)
+      if (blob) next[game.id] = URL.createObjectURL(blob)
+    }
+    coverUrls.value = next
+  }
 
   async function refresh() {
     loading.value = true
     try {
       games.value = await listGames()
+      await loadCovers(games.value)
       storage.value = await estimateStorage()
     } catch (err) {
       notice.value = { kind: 'error', key: err instanceof StorageError && err.code === 'quota' ? 'errors.quota' : 'errors.unavailable' }
@@ -85,5 +102,51 @@ export function useLocalLibrary() {
     await refresh()
   }
 
-  return { games, loading, saving, notice, storage, sessionGame, refresh, addFiles, rename, remove }
+  async function setCoverFromFile(id: string, image: File) {
+    notice.value = null
+    if (!image.type.startsWith('image/')) {
+      notice.value = { kind: 'error', key: 'errors.notAnImage' }
+      return
+    }
+    try {
+      await setCover(id, image)
+      await refresh()
+    } catch (err) {
+      if (err instanceof StorageError) notice.value = { kind: 'error', key: err.code === 'quota' ? 'errors.quota' : 'errors.unavailable' }
+      else throw err
+    }
+  }
+
+  /**
+   * Explicit, per-game online lookup. The index of names is fetched from our own server and matched
+   * locally; only when a match exists is that one image URL requested from libretro-thumbnails
+   * (which therefore learns the title). Never runs without the user's click.
+   */
+  async function findCoverOnline(game: LocalGame) {
+    notice.value = null
+    coverBusy.value = game.id
+    try {
+      if (!thumbnailIndex) {
+        const res = await fetch('/api/covers')
+        if (!res.ok) throw new Error('index')
+        thumbnailIndex = ((await res.json()) as { names: string[] }).names
+      }
+      const name = pickCover(game.primaryName, thumbnailIndex) ?? pickCover(game.title, thumbnailIndex)
+      if (!name) {
+        notice.value = { kind: 'info', key: 'covers.notFound', params: { title: game.title } }
+        return
+      }
+      const res = await fetch(THUMBNAIL_RAW_BASE + encodeURIComponent(name))
+      if (!res.ok) throw new Error('image')
+      await setCover(game.id, await res.blob())
+      await refresh()
+    } catch (err) {
+      if (err instanceof StorageError) notice.value = { kind: 'error', key: err.code === 'quota' ? 'errors.quota' : 'errors.unavailable' }
+      else notice.value = { kind: 'error', key: 'covers.failed' }
+    } finally {
+      coverBusy.value = null
+    }
+  }
+
+  return { games, loading, saving, notice, storage, sessionGame, coverUrls, coverBusy, refresh, addFiles, rename, remove, setCoverFromFile, findCoverOnline }
 }

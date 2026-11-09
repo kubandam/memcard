@@ -148,6 +148,15 @@ export async function deleteGame(id: string): Promise<void> {
   await Promise.all([tx.objectStore('games').delete(id), ...keys.map((k) => tx.objectStore('blobs').delete(k)), tx.done])
 }
 
+export async function setCover(id: string, image: Blob): Promise<void> {
+  const db = await openDb()
+  const game = await db.get('games', id)
+  if (!game) return
+  const coverBlobKey = await putBlob(image)
+  await db.put('games', { ...game, coverBlobKey })
+  if (game.coverBlobKey) await db.delete('blobs', game.coverBlobKey)
+}
+
 export async function touchLastPlayed(id: string): Promise<void> {
   const db = await openDb()
   const game = await db.get('games', id)

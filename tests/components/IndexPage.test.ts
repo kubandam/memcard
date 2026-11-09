@@ -9,6 +9,7 @@ import IndexPage from '../../app/pages/index.vue'
 const state = vi.hoisted(() => ({
   games: [] as LocalGame[],
   addGame: vi.fn(),
+  setCover: vi.fn(async () => {}),
 }))
 
 vi.mock('../../app/utils/localDb', async (importOriginal) => {
@@ -19,6 +20,8 @@ vi.mock('../../app/utils/localDb', async (importOriginal) => {
     addGame: state.addGame,
     estimateStorage: vi.fn(async () => ({ usage: 1.2e9, quota: 40e9 })),
     requestPersist: vi.fn(async () => true),
+    setCover: state.setCover,
+    getBlob: vi.fn(async () => new Blob([new Uint8Array(2)], { type: 'image/png' })),
   }
 })
 
@@ -50,6 +53,42 @@ describe('index page', () => {
       createdAt: 1,
       lastPlayedAt: null,
     }))
+  })
+
+  it('lets the user set a cover from an image file', async () => {
+    state.games = [{ id: 'a', title: 'Alpha', source: 'local', kind: 'single', primaryName: 'a.chd', files: [], sizeBytes: 5e6, createdAt: 1, lastPlayedAt: null }]
+    const wrapper = await mountSuspended(IndexPage)
+    await flushPromises()
+    const input = wrapper.find('input[type=file][accept^="image/"]')
+    expect(input.exists()).toBe(true)
+    const img = new File([new Uint8Array(4)], 'cover.png', { type: 'image/png' })
+    Object.defineProperty(input.element, 'files', { value: [img], configurable: true })
+    await input.trigger('change')
+    await flushPromises()
+    expect(state.setCover).toHaveBeenCalledWith('a', img)
+  })
+
+  it('finds a cover online only on explicit request and says what it sends', async () => {
+    state.games = [{ id: 'a', title: 'Crash Bandicoot', source: 'local', kind: 'single', primaryName: 'Crash Bandicoot (USA).chd', files: [], sizeBytes: 5e6, createdAt: 1, lastPlayedAt: null }]
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input)
+      if (url.includes('/api/covers')) return new Response(JSON.stringify({ names: ['Crash Bandicoot (USA).png'] }), { headers: { 'content-type': 'application/json' } })
+      return new Response(new Uint8Array(8), { headers: { 'content-type': 'image/png' } })
+    })
+    const wrapper = await mountSuspended(IndexPage)
+    await flushPromises()
+    expect(fetchSpy).not.toHaveBeenCalled()
+    const button = wrapper.find('[data-find-cover]')
+    expect(button.attributes('title')).toMatch(/libretro/i)
+    await button.trigger('click')
+    await flushPromises()
+    await flushPromises()
+    expect(fetchSpy.mock.calls.some(([u]) => String(u).includes('Crash%20Bandicoot%20(USA).png'))).toBe(true)
+    const [id, blob] = state.setCover.mock.calls[0]! as unknown as [string, Blob]
+    expect(id).toBe('a')
+    expect(blob.size).toBe(8)
+    expect(blob.type).toBe('image/png')
+    fetchSpy.mockRestore()
   })
 
   it('hides the free games section when the manifest is empty', async () => {

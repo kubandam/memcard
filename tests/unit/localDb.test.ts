@@ -13,6 +13,7 @@ import {
   getSetting,
   listGames,
   renameGame,
+  setCover,
   setSetting,
   touchLastPlayed,
 } from '../../app/utils/localDb'
@@ -99,6 +100,19 @@ describe('localDb', () => {
     expect(await listGames()).toHaveLength(0)
     const db = await (await import('../../app/utils/localDb')).openDb()
     expect(await db.count('blobs')).toBe(0)
+  })
+
+  it('setCover stores the image, replaces a previous cover and deleteGame removes it', async () => {
+    const g = await addGame(classified('Art'))
+    await setCover(g.id, new Blob([new Uint8Array(3)], { type: 'image/png' }))
+    const first = (await getGame(g.id))!.coverBlobKey!
+    expect((await getBlob(first))?.size).toBe(3)
+    await setCover(g.id, new Blob([new Uint8Array(5)], { type: 'image/png' }))
+    const second = (await getGame(g.id))!.coverBlobKey!
+    expect(second).not.toBe(first)
+    expect(await getBlob(first)).toBeUndefined()
+    await deleteGame(g.id)
+    expect(await getBlob(second)).toBeUndefined()
   })
 
   it('settings round-trip', async () => {
