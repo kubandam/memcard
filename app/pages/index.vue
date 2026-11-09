@@ -19,7 +19,12 @@ const renaming = ref<string | null>(null)
 const renameValue = ref('')
 const confirmingDelete = ref<string | null>(null)
 
-onMounted(refresh)
+const cloud = useCloudLibrary()
+
+onMounted(() => {
+  refresh()
+  cloud.restore()
+})
 
 function startRename(game: LocalGame) {
   renaming.value = game.id
@@ -58,6 +63,16 @@ async function confirmDelete(id: string) {
       <GameGrid>
         <GameTile v-for="game in freeGames" :key="game.id" :game="game" :href="`/play/free/${game.id}`" />
       </GameGrid>
+    </section>
+
+    <section aria-labelledby="online-library" class="online">
+      <div class="library-head">
+        <h2 id="online-library" class="display library-head__title">{{ t('cloud.section') }}</h2>
+      </div>
+      <ClientOnly>
+        <CloudLibrary v-if="cloud.status.value === 'open'" />
+        <CloudPanel v-else />
+      </ClientOnly>
     </section>
 
     <section aria-labelledby="my-games">
