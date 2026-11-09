@@ -38,3 +38,13 @@ tests/fixtures/*.chd
 tests/fixtures/*.bin
 tests/fixtures/*.cue
 tests/fixtures/*.zip
+
+# Owner's own discs for local testing — never committed (spec §3)
+games/
+*.chd
+*.pbp
+*.cue
+*.bin
+*.iso
+*.img
+!tests/fixtures/**

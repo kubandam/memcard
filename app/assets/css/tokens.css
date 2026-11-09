@@ -23,7 +23,29 @@
   --header-bg: transparent;
   --focus: #f2f2f2;
   --ejs-color: #f2f2f2;
+
+  /* Tile label (cover art is always dark, so the label stays black/white in both themes). */
+  --tile-label-bg: #000;
+  --tile-label-fg: #fff;
+
+  /* Boot world (/play). Deliberately NOT overridden by the grey theme, except the overlay bar. */
   --boot-bg: radial-gradient(ellipse at 50% 15%, #26262e 0%, #0b0b10 55%, #000 100%);
+  --boot-canvas-bg: #000;
+  --boot-font: 'Inter', system-ui, sans-serif;
+  --boot-fg: #fff;
+  --boot-fg-muted: rgba(255, 255, 255, 0.65);
+  --boot-line: rgba(255, 255, 255, 0.25);
+  --boot-line-soft: rgba(255, 255, 255, 0.1);
+  --boot-glow: rgba(255, 255, 255, 0.6);
+  --boot-glass: linear-gradient(135deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.01));
+  --boot-glass-shadow: 0 0 24px rgba(160, 170, 255, 0.12);
+  --boot-panel: linear-gradient(160deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.02));
+  --boot-scrim: rgba(0, 0, 0, 0.7);
+  --boot-button-bg: #fff;
+  --boot-button-fg: #000;
+  --overlay-bg: rgba(0, 0, 0, 0.55);
+  --overlay-fg: #fff;
+  --overlay-line: rgba(255, 255, 255, 0.25);
 }
 
 :root[data-theme='grey'] {
@@ -43,5 +65,8 @@
   --spine: #a9a69d;
   --header-bg: #b9b6ad;
   --focus: #1f1f1f;
-  --ejs-color: #1f1f1f;
+  --ejs-color: #d9d6cd;
+  --overlay-bg: rgba(217, 214, 205, 0.9);
+  --overlay-fg: #1f1f1f;
+  --overlay-line: #9b988f;
 }

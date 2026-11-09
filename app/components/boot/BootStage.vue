@@ -50,9 +50,9 @@ const { t } = useI18n()
 .boot__blk {
   position: absolute;
   display: block;
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.01));
-  box-shadow: 0 0 24px rgba(160, 170, 255, 0.12);
+  border: 1px solid var(--boot-line);
+  background: var(--boot-glass);
+  box-shadow: var(--boot-glass-shadow);
   transform: rotate(14deg) skew(-6deg);
   animation: drift 14s ease-in-out infinite alternate;
 }
@@ -73,27 +73,27 @@ const { t } = useI18n()
 }
 
 .boot__title {
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: var(--boot-font);
   font-weight: 300;
   font-size: clamp(16px, 2.4vw, 22px);
   letter-spacing: 0.4em;
   text-transform: uppercase;
-  text-shadow: 0 0 14px rgba(255, 255, 255, 0.6);
+  text-shadow: 0 0 14px var(--boot-glow);
   margin: 0 0 20px;
-  color: #fff;
+  color: var(--boot-fg);
 }
 
 .boot__bar {
   height: 2px;
-  background: rgba(255, 255, 255, 0.15);
+  background: var(--boot-line-soft);
   overflow: hidden;
 }
 
 .boot__bar i {
   display: block;
   height: 100%;
-  background: #fff;
-  box-shadow: 0 0 10px #fff;
+  background: var(--boot-fg);
+  box-shadow: 0 0 10px var(--boot-glow);
   transition: width 400ms ease;
 }
 
@@ -107,11 +107,11 @@ const { t } = useI18n()
 
 .boot__status {
   margin: 14px 0 0;
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: var(--boot-font);
   font-weight: 300;
   font-size: 10px;
   letter-spacing: 0.25em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.65);
+  color: var(--boot-fg-muted);
 }
 </style>

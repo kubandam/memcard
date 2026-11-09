@@ -43,7 +43,8 @@
     "renameLabel": "New title",
     "save": "Save",
     "delete": "Delete",
-    "confirmDelete": "Really delete?"
+    "confirmDelete": "Really delete?",
+    "saving": "Saving to this browser…"
   },
   "tile": {
     "play": "Play {title}",

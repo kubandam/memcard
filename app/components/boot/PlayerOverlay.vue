@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 
-const emit = defineEmits<{ fullscreen: []; controls: [] }>()
+const emit = defineEmits<{ fullscreen: []; controls: []; leave: [] }>()
 const { t } = useI18n()
 const visible = ref(true)
 let timer: ReturnType<typeof setTimeout> | undefined
@@ -29,7 +29,7 @@ onBeforeUnmount(() => {
   <div class="overlay" :class="{ 'overlay--hidden': !visible }" @pointerenter="show">
     <button type="button" class="overlay__btn" @click="emit('fullscreen')">{{ t('player.fullscreen') }}</button>
     <button type="button" class="overlay__btn" @click="emit('controls')">{{ t('player.controls') }}</button>
-    <a href="/" class="overlay__btn">{{ t('player.library') }}</a>
+    <a href="/" class="overlay__btn" @click.prevent="emit('leave')">{{ t('player.library') }}</a>
   </div>
 </template>
 
@@ -49,17 +49,18 @@ onBeforeUnmount(() => {
 
 .overlay--hidden {
   opacity: 0;
+  pointer-events: none;
 }
 
 .overlay__btn {
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: var(--boot-font);
   font-weight: 300;
   font-size: 10px;
   letter-spacing: 0.25em;
   text-transform: uppercase;
-  color: #fff;
-  background: rgba(0, 0, 0, 0.55);
-  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: var(--overlay-fg);
+  background: var(--overlay-bg);
+  border: 1px solid var(--overlay-line);
   border-radius: 999px;
   padding: 8px 14px;
   min-height: 44px;

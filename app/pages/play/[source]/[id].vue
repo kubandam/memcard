@@ -1,26 +1,28 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { onBeforeRouteLeave } from 'vue-router'
 import type { ClassifiedGame, LocalGame } from '~~/shared/types/game'
 import { sessionGame } from '~/composables/useLocalLibrary'
-import { getBlob, getGame, getSetting, touchLastPlayed } from '~/utils/localDb'
-import { buildGameFile } from '~/utils/packGame'
 import { readKeyboardMapping, type KeyBinding } from '~/utils/emulatorjs'
+import { buildGamePayload, type BlobGetter } from '~/utils/gamePayload'
+import { getBlob, getGame, getSetting, touchLastPlayed } from '~/utils/localDb'
 
 definePageMeta({ layout: 'boot' })
 
 const route = useRoute()
 const { t } = useI18n()
 const { public: { emulatorjsBase } } = useRuntimeConfig()
-const { theme } = useTheme()
 
 const source = computed(() => String(route.params.source))
 const id = computed(() => String(route.params.id))
 
-const { phase, progress, error, setPhase, setSubProgress, fail, start, onSaveExport } = useEmulator()
+const { phase, progress, error, setPhase, setSubProgress, fail, start, onSaveExport, flushSaves } = useEmulator()
 const title = ref('')
 const notFound = ref(false)
 const controlsOpen = ref(false)
 const mapping = ref<KeyBinding[]>([])
+
+useHead({ title: computed(() => title.value || t('player.title')) })
 
 onSaveExport((save) => {
   const url = URL.createObjectURL(new Blob([save as BlobPart], { type: 'application/octet-stream' }))
@@ -36,30 +38,38 @@ function openControls() {
   controlsOpen.value = true
 }
 
-useHead({ title: computed(() => title.value || t('player.title')) })
+/** The optional BIOS from settings; storage trouble must not stop the game, so errors are swallowed. */
+async function readBiosBytes(): Promise<Uint8Array | undefined> {
+  try {
+    const key = await getSetting<string>('bios')
+    if (!key) return undefined
+    const blob = await getBlob(key)
+    return blob ? new Uint8Array(await blob.arrayBuffer()) : undefined
+  } catch {
+    return undefined
+  }
+}
 
-async function readBios(): Promise<File | undefined> {
-  const key = await getSetting<string>('bios')
-  if (!key) return undefined
-  const blob = await getBlob(key)
-  if (!blob) return undefined
-  const name = (await getSetting<string>('biosName')) ?? 'bios.bin'
-  return new File([blob], name)
+function ejsColor(): string {
+  const value = getComputedStyle(document.documentElement).getPropertyValue('--ejs-color').trim()
+  return value || '#f2f2f2'
+}
+
+async function boot(game: LocalGame, getter: BlobGetter) {
+  title.value = game.title
+  setPhase('reading')
+  if (game.kind === 'multi') setPhase('packing')
+  const payload = await buildGamePayload(game, getter, (f) => setSubProgress(game.kind === 'multi' ? 'packing' : 'reading', 'loading', f))
+  const bios = await readBiosBytes()
+  start({ file: payload.file, extraFiles: payload.extraFiles, bios, gameName: game.primaryName, base: emulatorjsBase, color: ejsColor() })
 }
 
 async function loadLocal(game: LocalGame) {
-  title.value = game.title
-  setPhase('reading')
-  const file = await buildGameFile(game, getBlob, (f) => setSubProgress('reading', 'loading', f))
-  if (game.kind === 'multi') setPhase('packing')
-  const biosFile = await readBios()
-  await touchLastPlayed(game.id)
-  start({ file, gameName: game.primaryName, base: emulatorjsBase, biosFile, color: theme.value === 'grey' ? '#1f1f1f' : '#f2f2f2' })
+  await touchLastPlayed(game.id).catch(() => undefined)
+  await boot(game, getBlob)
 }
 
 async function loadSession(game: ClassifiedGame) {
-  title.value = game.title
-  setPhase('reading')
   const blobs = new Map(game.files.map((f) => [f.name, f]))
   const pseudo: LocalGame = {
     id: 'session',
@@ -73,12 +83,12 @@ async function loadSession(game: ClassifiedGame) {
     createdAt: Date.now(),
     lastPlayedAt: null,
   }
-  const file = await buildGameFile(pseudo, async (key) => blobs.get(key))
-  const biosFile = await readBios()
-  start({ file, gameName: game.primaryName, base: emulatorjsBase, biosFile, color: theme.value === 'grey' ? '#1f1f1f' : '#f2f2f2' })
+  await boot(pseudo, async (key) => blobs.get(key))
 }
 
 onMounted(async () => {
+  window.addEventListener('pagehide', flushSaves)
+  document.addEventListener('visibilitychange', onVisibility)
   try {
     if (source.value === 'local') {
       const game = await getGame(id.value)
@@ -97,26 +107,47 @@ onMounted(async () => {
   }
 })
 
+onBeforeUnmount(() => {
+  window.removeEventListener('pagehide', flushSaves)
+  document.removeEventListener('visibilitychange', onVisibility)
+})
+
+function onVisibility() {
+  if (document.visibilityState === 'hidden') flushSaves()
+}
+
+/** EmulatorJS has no teardown: every exit from this page is a full navigation, Back button included. */
+onBeforeRouteLeave((to) => {
+  flushSaves()
+  window.location.assign(to.fullPath)
+  return false
+})
+
+function leave() {
+  flushSaves()
+  window.location.assign('/')
+}
+
 function fullscreen() {
   document.getElementById('stage')?.requestFullscreen?.()
 }
 </script>
 
 <template>
-  <div id="stage" class="stage">
+  <div id="stage" class="stage" :class="{ 'stage--running': phase === 'running' }">
     <template v-if="notFound">
       <div class="not-found">
         <h1 class="not-found__title">{{ t('player.notFound') }}</h1>
         <p class="not-found__text">{{ t('player.notFoundHint') }}</p>
-        <a href="/" class="not-found__link">{{ t('player.backToLibrary') }}</a>
+        <a href="/" class="exit-link">{{ t('player.backToLibrary') }}</a>
       </div>
     </template>
     <template v-else>
       <BootStage :title="title" :phase="phase" :progress="progress" :error="error">
-        <a v-if="phase === 'error'" href="/" class="not-found__link">{{ t('player.backToLibrary') }}</a>
+        <a href="/" class="exit-link" @click.prevent="leave">{{ t('player.backToLibrary') }}</a>
       </BootStage>
       <div id="game" class="game" />
-      <PlayerOverlay v-if="phase === 'running'" @fullscreen="fullscreen" @controls="openControls" />
+      <PlayerOverlay v-if="phase === 'running'" @fullscreen="fullscreen" @controls="openControls" @leave="leave" />
       <ControlsOverlay :open="controlsOpen" :mapping="mapping" @close="controlsOpen = false" />
     </template>
   </div>
@@ -126,11 +157,11 @@ function fullscreen() {
 .stage {
   position: absolute;
   inset: 0;
-  background: #000;
 }
 
+.stage--running,
 .stage:fullscreen {
-  background: #000;
+  background: var(--boot-canvas-bg);
 }
 
 .game {
@@ -146,29 +177,37 @@ function fullscreen() {
   text-align: center;
   gap: 12px;
   padding: 24px;
-  background: var(--boot-bg);
 }
 
 .not-found__title {
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: var(--boot-font);
   font-weight: 300;
   letter-spacing: 0.4em;
   text-transform: uppercase;
   font-size: 18px;
   margin: 0;
-  text-shadow: 0 0 14px rgba(255, 255, 255, 0.6);
+  color: var(--boot-fg);
+  text-shadow: 0 0 14px var(--boot-glow);
 }
 
 .not-found__text {
   margin: 0;
-  color: rgba(255, 255, 255, 0.65);
+  color: var(--boot-fg-muted);
 }
 
-.not-found__link {
-  color: #fff;
+.exit-link {
+  display: inline-block;
+  margin-top: 16px;
+  color: var(--boot-fg);
+  font-family: var(--boot-font);
+  font-weight: 300;
   font-size: 11px;
   letter-spacing: 0.25em;
   text-transform: uppercase;
-  margin-top: 12px;
+  text-decoration: none;
+  border: 1px solid var(--boot-line);
+  border-radius: 999px;
+  padding: 10px 16px;
+  min-height: 44px;
 }
 </style>

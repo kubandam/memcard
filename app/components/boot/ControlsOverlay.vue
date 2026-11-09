@@ -51,18 +51,18 @@ watch(
   z-index: 4;
   display: grid;
   place-items: center;
-  background: rgba(0, 0, 0, 0.7);
-  font-family: 'Inter', system-ui, sans-serif;
+  background: var(--boot-scrim);
+  font-family: var(--boot-font);
   font-weight: 300;
-  color: #fff;
+  color: var(--boot-fg);
   overflow: auto;
   padding: 24px;
 }
 
 .controls__panel {
   width: min(520px, 100%);
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  background: linear-gradient(160deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.02));
+  border: 1px solid var(--boot-line);
+  background: var(--boot-panel);
   backdrop-filter: blur(8px);
   padding: 24px;
 }
@@ -73,7 +73,7 @@ watch(
   font-size: 14px;
   letter-spacing: 0.4em;
   text-transform: uppercase;
-  text-shadow: 0 0 12px rgba(255, 255, 255, 0.5);
+  text-shadow: 0 0 12px var(--boot-glow);
 }
 
 .controls__table {
@@ -88,18 +88,18 @@ watch(
   font-size: 10px;
   letter-spacing: 0.25em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--boot-fg-muted);
   padding: 0 0 8px;
 }
 
 .controls__table td {
   padding: 5px 0;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  border-top: 1px solid var(--boot-line-soft);
 }
 
 kbd {
   font-family: inherit;
-  border: 1px solid rgba(255, 255, 255, 0.3);
+  border: 1px solid var(--boot-line);
   border-radius: 3px;
   padding: 1px 6px;
 }
@@ -107,13 +107,13 @@ kbd {
 .controls__hint {
   margin: 14px 0 0;
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--boot-fg-muted);
 }
 
 .controls__close {
   margin-top: 20px;
-  background: #fff;
-  color: #000;
+  background: var(--boot-button-bg);
+  color: var(--boot-button-fg);
   border: 0;
   border-radius: 999px;
   padding: 10px 18px;

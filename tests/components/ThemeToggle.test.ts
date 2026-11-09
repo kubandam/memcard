@@ -11,6 +11,15 @@ describe('ThemeToggle', () => {
     __resetThemeForTests()
   })
 
+  it('renders the stored theme as pressed on first paint (no SSR default leaking through)', async () => {
+    localStorage.setItem('memcard.theme', 'grey')
+    document.documentElement.dataset.theme = 'grey'
+    const wrapper = await mountSuspended(ThemeToggle)
+    const buttons = wrapper.findAll('button')
+    expect(buttons[1]!.attributes('aria-pressed')).toBe('true')
+    expect(buttons[0]!.attributes('aria-pressed')).toBe('false')
+  })
+
   it('switches the document theme and reflects pressed state', async () => {
     const wrapper = await mountSuspended(ThemeToggle)
     const buttons = wrapper.findAll('button')

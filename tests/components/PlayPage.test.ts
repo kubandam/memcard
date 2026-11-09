@@ -7,6 +7,7 @@ import PlayPage from '../../app/pages/play/[source]/[id].vue'
 
 const state = vi.hoisted(() => ({
   game: undefined as LocalGame | undefined,
+  biosKey: undefined as string | undefined,
   route: { params: { source: 'local', id: 'g1' }, query: {} as Record<string, string> },
 }))
 
@@ -16,7 +17,7 @@ vi.mock('../../app/utils/localDb', async (importOriginal) => {
     ...mod,
     getGame: vi.fn(async () => state.game),
     getBlob: vi.fn(async () => new Blob([new Uint8Array(4)])),
-    getSetting: vi.fn(async () => undefined),
+    getSetting: vi.fn(async (k: string) => (k === 'bios' ? state.biosKey : k === 'biosName' ? 'SCPH1001.BIN' : undefined)),
     touchLastPlayed: vi.fn(async () => {}),
   }
 })
@@ -46,9 +47,22 @@ vi.spyOn(document.body, 'appendChild').mockImplementation(<T extends Node>(node:
   return originalAppend(node)
 })
 
+/** Records every data-phase value in order (mutation records are batched, so rebuild from oldValue). */
+function observePhases() {
+  const olds: (string | null)[] = []
+  const observer = new MutationObserver((records) => records.forEach((r) => olds.push(r.oldValue)))
+  observer.observe(document.documentElement, { attributes: true, attributeOldValue: true, attributeFilter: ['data-phase'] })
+  return () => {
+    observer.takeRecords().forEach((r) => olds.push(r.oldValue))
+    observer.disconnect()
+    return [...olds.slice(1), document.documentElement.dataset.phase ?? '']
+  }
+}
+
 describe('play page', () => {
   beforeEach(() => {
     state.game = undefined
+    state.biosKey = undefined
     injected.scripts.length = 0
     delete document.documentElement.dataset.phase
     for (const key of Object.keys(window).filter((k) => k.startsWith('EJS_'))) delete (window as unknown as Record<string, unknown>)[key]
@@ -64,10 +78,14 @@ describe('play page', () => {
 
   it('walks through the boot phases and injects loader.js for a stored game', async () => {
     state.game = game
+    const phases = observePhases()
     const wrapper = await mountSuspended(PlayPage)
     await flushPromises()
     await flushPromises()
+    expect(phases()).toEqual(['reading', 'loading'])
     expect(wrapper.text()).toContain('Magic Castle')
+    // An exit is always offered, even before the game runs.
+    expect(wrapper.find('a[href="/"]').exists()).toBe(true)
     expect(injected.scripts).toHaveLength(1)
     expect(injected.scripts[0]!.src.endsWith('/loader.js')).toBe(true)
     expect((window as unknown as Record<string, unknown>).EJS_core).toBe('psx')
@@ -76,5 +94,33 @@ describe('play page', () => {
     ;(window as unknown as { EJS_onGameStart: () => void }).EJS_onGameStart()
     await flushPromises()
     expect(document.documentElement.dataset.phase).toBe('running')
+  })
+
+  it('reads a stored BIOS and hands its bytes (not a File) to the emulator', async () => {
+    state.game = game
+    state.biosKey = 'bios-blob'
+    await mountSuspended(PlayPage)
+    await flushPromises()
+    await flushPromises()
+    expect(window).not.toHaveProperty('EJS_biosUrl')
+    // The BIOS reaches the FS through the saveDatabaseLoaded hook registered in EJS_ready.
+    const writes: [string, Uint8Array][] = []
+    const handlers: Record<string, (fs: unknown) => void> = {}
+    const emu = { on: (ev: string, fn: (fs: unknown) => void) => (handlers[ev] = fn) }
+    ;(window as unknown as { EJS_emulator: unknown }).EJS_emulator = emu
+    ;(window as unknown as { EJS_ready: (e: unknown) => void }).EJS_ready(emu)
+    handlers.saveDatabaseLoaded!({ writeFile: (p: string, d: Uint8Array) => writes.push([p, d]) })
+    expect(writes.map(([p]) => p)).toEqual(['/scph5501.bin'])
+    expect(writes[0]![1]).toBeInstanceOf(Uint8Array)
+  })
+
+  it('packs a multi-disc game as playlist + extra files', async () => {
+    state.game = { ...game, kind: 'multi', primaryName: 'Magic Castle.m3u', generatedM3u: 'Magic Castle (Disc 1).chd\n', files: [{ name: 'Magic Castle (Disc 1).chd', size: 4, blobKey: 'b1' }] }
+    const phases = observePhases()
+    await mountSuspended(PlayPage)
+    await flushPromises()
+    await flushPromises()
+    expect(phases()).toEqual(['reading', 'packing', 'loading'])
+    expect(((window as unknown as Record<string, unknown>).EJS_gameUrl as File).name).toBe('Magic Castle.m3u')
   })
 })

@@ -16,10 +16,9 @@ describe('buildEjsGlobals', () => {
     expect(g).not.toHaveProperty('EJS_biosUrl')
   })
 
-  it('passes the BIOS file only when given', () => {
-    const bios = new File(['b'], 'scph1001.bin')
-    const g = buildEjsGlobals({ file, gameName: 'g.chd', base: '/emulatorjs/data/', color: '#000', biosFile: bios })
-    expect(g.EJS_biosUrl).toBe(bios)
+  it('never emits EJS_biosUrl (EmulatorJS 4.2.3 cannot take a File there; the BIOS goes through the FS hook)', () => {
+    const g = buildEjsGlobals({ file, gameName: 'g.chd', base: '/emulatorjs/data/', color: '#000' })
+    expect(Object.keys(g)).not.toContain('EJS_biosUrl')
   })
 })
 

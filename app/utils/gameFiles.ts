@@ -67,6 +67,25 @@ function findByName(files: File[], wanted: string): File | undefined {
   return files.find((f) => f.name.toLowerCase() === lower)
 }
 
+/** Resolves every track file referenced by the given cue sheets; returns missing names or the resolved files. */
+async function resolveCueTracks(cues: File[], files: File[]): Promise<{ missing: string[]; tracks: File[] }> {
+  const missing: string[] = []
+  const tracks: File[] = []
+  for (const cue of cues) {
+    for (const name of parseCue(await cue.text())) {
+      const found = findByName(files, name)
+      if (found) tracks.push(found)
+      else missing.push(name)
+    }
+  }
+  return { missing, tracks }
+}
+
+function extras(files: File[], used: File[]): string[] {
+  const set = new Set(used)
+  return files.filter((f) => !set.has(f)).map((f) => f.name)
+}
+
 export async function classifyFiles(files: File[]): Promise<ClassifyResult> {
   if (files.length === 0) return fail('empty')
 
@@ -78,47 +97,41 @@ export async function classifyFiles(files: File[]): Promise<ClassifyResult> {
   const m3us = byExt('m3u')
   const bins = byExt('bin')
 
-  if (m3us.length > 1 || cues.length > 1) {
-    return fail('mixed', [...m3us.slice(1), ...cues.slice(1)].map((f) => f.name))
-  }
+  if (m3us.length > 1) return fail('mixed', m3us.slice(1).map((f) => f.name))
 
-  // Explicit playlist: every listed disc (or cue) must be present.
+  // Explicit playlist: every listed disc (image or cue) must be present, plus every cue's tracks.
   if (m3us.length === 1) {
     const m3u = m3us[0]!
     const listed = parseM3u(await m3u.text())
-    const missing = listed.filter((n) => !findByName(files, n))
-    if (missing.length) return fail('missing-m3u-disc', missing)
-    const referenced = new Set(listed.map((n) => n.toLowerCase()))
-    if (cues.length === 1) {
-      for (const n of parseCue(await cues[0]!.text())) referenced.add(n.toLowerCase())
-    }
-    const extra = files.filter((f) => f !== m3u && !referenced.has(f.name.toLowerCase())).map((f) => f.name)
+    const missingDiscs = listed.filter((n) => !findByName(files, n))
+    if (missingDiscs.length) return fail('missing-m3u-disc', missingDiscs)
+    const discs = listed.map((n) => findByName(files, n)!)
+    const { missing, tracks } = await resolveCueTracks(discs.filter((f) => extensionOf(f.name) === 'cue'), files)
+    if (missing.length) return fail('missing-bin', missing)
+    const used = [m3u, ...discs, ...tracks]
+    const extra = extras(files, used)
     if (extra.length) return fail('mixed', extra)
-    return ok({
-      title: titleFromFilename(m3u.name),
-      kind: 'multi',
-      primaryName: m3u.name,
-      files: [m3u, ...listed.map((n) => findByName(files, n)!)],
-      totalBytes: sum(files),
-    })
+    return ok({ title: titleFromFilename(m3u.name), kind: 'multi', primaryName: m3u.name, files: used, totalBytes: sum(files) })
   }
 
-  // Cue sheet: every referenced track file must be present and nothing else may be there.
+  // One cue sheet: it is the primary file; every referenced track must be present and nothing else may be there.
   if (cues.length === 1) {
     const cue = cues[0]!
-    const referenced = parseCue(await cue.text())
-    const missing = referenced.filter((n) => !findByName(files, n))
+    const { missing, tracks } = await resolveCueTracks([cue], files)
     if (missing.length) return fail('missing-bin', missing)
-    const refSet = new Set(referenced.map((n) => n.toLowerCase()))
-    const extra = files.filter((f) => f !== cue && !refSet.has(f.name.toLowerCase())).map((f) => f.name)
+    const used = [cue, ...tracks]
+    const extra = extras(files, used)
     if (extra.length) return fail('mixed', extra)
-    return ok({
-      title: titleFromFilename(cue.name),
-      kind: 'multi',
-      primaryName: cue.name,
-      files: [cue, ...referenced.map((n) => findByName(files, n)!)],
-      totalBytes: sum(files),
-    })
+    return ok({ title: titleFromFilename(cue.name), kind: 'multi', primaryName: cue.name, files: used, totalBytes: sum(files) })
+  }
+
+  // Several cue sheets without a playlist: discs of one game → generate the m3u.
+  if (cues.length > 1) {
+    const { missing, tracks } = await resolveCueTracks(cues, files)
+    if (missing.length) return fail('missing-bin', missing)
+    const extra = extras(files, [...cues, ...tracks])
+    if (extra.length) return fail('mixed', extra)
+    return multiDiscWithoutPlaylist(cues, [...cues, ...tracks])
   }
 
   if (bins.length) return fail('missing-cue', bins.map((f) => f.name))
@@ -130,19 +143,24 @@ export async function classifyFiles(files: File[]): Promise<ClassifyResult> {
     return ok({ title: titleFromFilename(only.name), kind: 'single', primaryName: only.name, files: [only], totalBytes: only.size })
   }
 
-  // Several disc images without a playlist: they must look like discs of one game.
   const discs = files.filter((f) => DISC_EXTENSIONS.has(extensionOf(f.name)))
   if (discs.length !== files.length) return fail('mixed', files.filter((f) => !DISC_EXTENSIONS.has(extensionOf(f.name))).map((f) => f.name))
+  return multiDiscWithoutPlaylist(discs, discs)
+}
+
+/** Several discs (images or cue sheets) of one title: sort them, generate the playlist. */
+function multiDiscWithoutPlaylist(discs: File[], allFiles: File[]): ClassifyResult {
   const titles = new Set(discs.map((f) => titleFromFilename(f.name)))
   if (titles.size !== 1) return fail('mixed', discs.map((f) => f.name))
   const sorted = [...discs].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
   const title = titles.values().next().value as string
+  const ordered = [...sorted, ...allFiles.filter((f) => !sorted.includes(f))]
   return ok({
     title,
     kind: 'multi',
     primaryName: `${title}.m3u`,
-    files: sorted,
+    files: ordered,
     generatedM3u: generateM3u(sorted.map((f) => f.name)),
-    totalBytes: sum(sorted),
+    totalBytes: sum(allFiles),
   })
 }

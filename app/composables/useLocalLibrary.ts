@@ -24,6 +24,7 @@ export function useLocalLibrary() {
   const loading = ref(false)
   const notice = ref<LibraryNotice | null>(null)
   const storage = ref<{ usage: number; quota: number } | null>(null)
+  const saving = ref(false)
 
   async function refresh() {
     loading.value = true
@@ -46,12 +47,13 @@ export function useLocalLibrary() {
     }
     const { game } = result
     const limit = game.kind === 'single' ? LARGE_SINGLE_BYTES : LARGE_MULTI_BYTES
-    const large = game.totalBytes > limit
-    if (games.value.length === 0) await requestPersist()
+    // Warn before the (possibly long) save so the user sees it while waiting.
+    if (game.totalBytes > limit) notice.value = { kind: 'info', key: 'warnings.largeFile' }
+    saving.value = true
     try {
+      if (games.value.length === 0) await requestPersist()
       const stored = await addGame(game)
       await refresh()
-      if (large) notice.value = { kind: 'info', key: 'warnings.largeFile' }
       return stored
     } catch (err) {
       if (err instanceof StorageError) {
@@ -60,6 +62,8 @@ export function useLocalLibrary() {
         return null
       }
       throw err
+    } finally {
+      saving.value = false
     }
   }
 
@@ -81,5 +85,5 @@ export function useLocalLibrary() {
     await refresh()
   }
 
-  return { games, loading, notice, storage, sessionGame, refresh, addFiles, rename, remove }
+  return { games, loading, saving, notice, storage, sessionGame, refresh, addFiles, rename, remove }
 }

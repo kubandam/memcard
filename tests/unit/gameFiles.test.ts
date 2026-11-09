@@ -102,3 +102,41 @@ describe('helpers', () => {
     expect(isSupported('g.txt')).toBe(false)
   })
 })
+
+describe('classifyFiles — multi-disc cue sets', () => {
+  const f = (name: string, content: string | number = 16) =>
+    new File([typeof content === 'string' ? content : new Uint8Array(content)], name)
+
+  it('accepts m3u + several cues and keeps every bin', async () => {
+    const r = await classifyFiles([
+      f('Game.m3u', 'Game (Disc 1).cue\nGame (Disc 2).cue\n'),
+      f('Game (Disc 1).cue', 'FILE "Game (Disc 1).bin" BINARY'),
+      f('Game (Disc 1).bin'),
+      f('Game (Disc 2).cue', 'FILE "Game (Disc 2).bin" BINARY'),
+      f('Game (Disc 2).bin'),
+    ])
+    expect(r).toMatchObject({ ok: true, game: { kind: 'multi', primaryName: 'Game.m3u', title: 'Game' } })
+    if (r.ok) expect(r.game.files.map((x) => x.name).sort()).toEqual(['Game (Disc 1).bin', 'Game (Disc 1).cue', 'Game (Disc 2).bin', 'Game (Disc 2).cue', 'Game.m3u'])
+  })
+
+  it('accepts m3u + one cue and keeps its bin', async () => {
+    const r = await classifyFiles([f('G.m3u', 'G.cue\n'), f('G.cue', 'FILE "G.bin" BINARY'), f('G.bin')])
+    expect(r).toMatchObject({ ok: true })
+    if (r.ok) expect(r.game.files.map((x) => x.name).sort()).toEqual(['G.bin', 'G.cue', 'G.m3u'])
+  })
+
+  it('generates an m3u for several cue sets without one', async () => {
+    const r = await classifyFiles([
+      f('Game (Disc 2).cue', 'FILE "Game (Disc 2).bin" BINARY'),
+      f('Game (Disc 2).bin'),
+      f('Game (Disc 1).cue', 'FILE "Game (Disc 1).bin" BINARY'),
+      f('Game (Disc 1).bin'),
+    ])
+    expect(r).toMatchObject({ ok: true, game: { kind: 'multi', primaryName: 'Game.m3u', generatedM3u: 'Game (Disc 1).cue\nGame (Disc 2).cue\n' } })
+  })
+
+  it('reports a bin missing from one of several cues', async () => {
+    const r = await classifyFiles([f('A.cue', 'FILE "A.bin" BINARY'), f('A.bin'), f('B.cue', 'FILE "B.bin" BINARY')])
+    expect(r).toMatchObject({ ok: false, error: { code: 'missing-bin', details: ['B.bin'] } })
+  })
+})

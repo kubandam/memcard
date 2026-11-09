@@ -9,7 +9,7 @@
   position: fixed;
   inset: 0;
   background: var(--boot-bg);
-  color: #fff;
+  color: var(--boot-fg);
   overflow: hidden;
 }
 </style>

@@ -10,7 +10,7 @@ useHead({ title: t('home.title') })
 // Free games arrive with the M2 manifest; the section is hidden while empty.
 const freeGames = ref<LocalGame[]>([])
 
-const { games, notice, storage, sessionGame, refresh, addFiles, rename, remove } = useLocalLibrary()
+const { games, saving, notice, storage, sessionGame, refresh, addFiles, rename, remove } = useLocalLibrary()
 
 const renaming = ref<string | null>(null)
 const renameValue = ref('')
@@ -58,8 +58,9 @@ async function confirmDelete(id: string) {
 
       <Notice v-if="notice" :kind="notice.kind">
         {{ t(notice.key, notice.params ?? {}) }}
-        <NuxtLink v-if="notice.key === 'errors.quota' && sessionGame" to="/play/session/current" class="notice-link">{{ t('home.playAnyway') }}</NuxtLink>
+        <NuxtLink v-if="(notice.key === 'errors.quota' || notice.key === 'errors.unavailable') && sessionGame" to="/play/session/current" class="notice-link">{{ t('home.playAnyway') }}</NuxtLink>
       </Notice>
+      <p v-if="saving" data-saving class="label saving" aria-live="polite">{{ t('home.saving') }}</p>
 
       <GameGrid v-if="games.length">
         <GameTile v-for="game in games" :key="game.id" :game="game" :href="`/play/local/${game.id}`">
@@ -119,5 +120,9 @@ async function confirmDelete(id: string) {
 
 .notice-link {
   margin-left: 8px;
+}
+
+.saving {
+  margin: 8px 0;
 }
 </style>

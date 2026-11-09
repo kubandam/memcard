@@ -82,10 +82,36 @@ describe('index page', () => {
     expect(wrapper.find('a[href="/play/session/current"]').exists()).toBe(true)
   })
 
-  it('warns about large files but still adds them', async () => {
+  it('warns about large files before saving them, and still adds them', async () => {
+    let noticeWhenSaving = ''
     const wrapper = await mountSuspended(IndexPage)
+    state.addGame.mockImplementationOnce(async (g: ClassifiedGame): Promise<LocalGame> => {
+      noticeWhenSaving = wrapper.find('[role=status]').text()
+      return { id: 'new', title: g.title, source: 'local', kind: g.kind, primaryName: g.primaryName, files: [], sizeBytes: g.totalBytes, createdAt: 1, lastPlayedAt: null }
+    })
     await dropFiles(wrapper, [file('big.chd', 800 * 1024 * 1024)])
+    expect(noticeWhenSaving).toMatch(/memory/i)
     expect(wrapper.find('[role=status]').text()).toMatch(/memory/i)
     expect(state.addGame).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows a saving state while a game is being stored', async () => {
+    let busyWhileSaving = false
+    const wrapper = await mountSuspended(IndexPage)
+    state.addGame.mockImplementationOnce(async (g: ClassifiedGame): Promise<LocalGame> => {
+      busyWhileSaving = wrapper.find('[data-saving]').exists()
+      return { id: 'new', title: g.title, source: 'local', kind: g.kind, primaryName: g.primaryName, files: [], sizeBytes: g.totalBytes, createdAt: 1, lastPlayedAt: null }
+    })
+    await dropFiles(wrapper, [file('g.chd')])
+    expect(busyWhileSaving).toBe(true)
+    expect(wrapper.find('[data-saving]').exists()).toBe(false)
+  })
+
+  it('offers to play this session when storage is unavailable', async () => {
+    state.addGame.mockRejectedValue(new StorageError('unavailable', 'no idb'))
+    const wrapper = await mountSuspended(IndexPage)
+    await dropFiles(wrapper, [file('g.chd')])
+    expect(wrapper.find('[role=alert]').text()).toMatch(/unavailable/i)
+    expect(wrapper.find('a[href="/play/session/current"]').exists()).toBe(true)
   })
 })

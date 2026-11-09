@@ -33,7 +33,7 @@ const { t } = useI18n()
   box-shadow: var(--tile-shadow);
   overflow: hidden;
   text-decoration: none;
-  color: #fff;
+  color: var(--tile-label-fg);
 }
 
 .tile__img {
@@ -56,8 +56,8 @@ const { t } = useI18n()
   left: 15px;
   bottom: 10px;
   right: 10px;
-  background: #000;
-  color: #fff;
+  background: var(--tile-label-bg);
+  color: var(--tile-label-fg);
   font-size: 11px;
   letter-spacing: 0.1em;
   padding: 3px 6px;

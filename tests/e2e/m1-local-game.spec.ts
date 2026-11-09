@@ -40,7 +40,7 @@ test('add a local game, keep it across visits, play it without any network uploa
 
   // Leaving the player is a full navigation back to the library.
   await page2.mouse.move(400, 20)
-  await page2.getByRole('link', { name: /library/i }).click()
+  await page2.locator('.overlay').getByRole('link', { name: /library/i }).click()
   await expect(page2).toHaveURL(/\/$/)
   await expect(page2.getByRole('link', { name: FIXTURE_TITLE })).toBeVisible()
   await context.close()

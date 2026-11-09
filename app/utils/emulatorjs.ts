@@ -14,6 +14,20 @@
  * - Memory card save: `saveFileExt === 'srm'`, path `/data/saves/PCSX-ReARMed/<EJS_gameName>.srm`.
  * - pcsx_rearmed only boots ISO9660 images whose directory entries carry the `;1` version suffix
  *   and contain SYSTEM.CNF (or PSX.EXE). hdiutil output lacks `;1`; see scripts/build-fixture.mjs.
+ *
+ * Verified later against the 4.2.3 source (emulator.js) during review:
+ * - `EJS_biosUrl` must be a URL string: `downloadGameFile()` calls `assetUrl.split("/")` on it in the
+ *   non-debug path, so a `File` throws inside a Promise and the boot hangs forever. The BIOS (and any
+ *   extra disc/track files) are instead written into the FS in the `saveDatabaseLoaded` event, which
+ *   fires after `mountFileSystems()` and before `downloadRom()`. pcsx_rearmed finds the BIOS only under
+ *   canonical names, so it is written as `/scph5501.bin`.
+ * - Given an archive, `downloadRom()` prefers any `iso|cso|chd|elf` entry over an `.m3u`, so multi-disc
+ *   sets are not zipped: the playlist/cue is the `EJS_gameUrl` File and the discs are extra FS files.
+ * - 4.2.3 bug: `startGame()` runs `setupDisksMenu()` before `setupSettingsMenu()` creates `allSettings`,
+ *   so any game with >1 disc throws "Cannot set properties of undefined (setting 'disk')". Pre-creating
+ *   `EJS_emulator.allSettings = {}` in `EJS_ready` avoids it.
+ * - `downloadFile()` returns no `content-length` for a `File`, so File inputs are never put in the
+ *   EmulatorJS ROM cache; `EJS_CacheLimit = 0` is set anyway for local games.
  */
 export const EJS_VERSION = '4.2.3'
 
@@ -105,7 +119,6 @@ export interface EjsOptions {
   /** Data folder URL with trailing slash. */
   base: string
   color: string
-  biosFile?: File
 }
 
 export function buildEjsGlobals(opts: EjsOptions): Record<string, unknown> {
@@ -124,6 +137,5 @@ export function buildEjsGlobals(opts: EjsOptions): Record<string, unknown> {
     EJS_askBeforeExit: false,
     EJS_defaultOptions: {},
   }
-  if (opts.biosFile) globals.EJS_biosUrl = opts.biosFile
   return globals
 }
