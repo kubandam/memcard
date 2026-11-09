@@ -30,7 +30,7 @@ describe('memory library store (contract shared with D1)', () => {
     expect(await s.swapManifest('a', 'e1', 'e2')).toBe(true)
     expect((await s.getLibrary('a'))?.manifestEtag).toBe('e2')
     await s.putUpload('u', 'a', 'k', 'up-1')
-    expect(await s.getUpload('u')).toEqual({ libraryId: 'a', key: 'k', uploadId: 'up-1' })
+    expect(await s.getUpload('u')).toEqual({ libraryId: 'a', key: 'k', uploadId: 'up-1', createdAt: expect.any(Number) })
     await s.setPartBytes('u', 1, 10)
     await s.setPartBytes('u', 1, 7)
     await s.setPartBytes('u', 2, 5)

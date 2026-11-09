@@ -112,6 +112,16 @@ describe('multipart objects', () => {
     expect(await store.openUploads('liba', t - 7 * 24 * 3600 * 1000)).toBe(1)
   })
 
+  it('an upload past the expiry window is refused (and aborted) instead of taking uncounted parts', async () => {
+    let t = 1_000_000
+    const { svc, r2 } = await setup(100 * MiB, 100 * MiB, () => t)
+    const { uploadId } = await svc.createUpload('liba', K1)
+    t += 8 * 24 * 3600 * 1000
+    expect(await code(svc.uploadPart('liba', K1, uploadId, 1, new Uint8Array(10)))).toBe(404)
+    expect(r2.mpus.has(uploadId)).toBe(false)
+    expect(await code(svc.completeUpload('liba', K1, uploadId, [{ partNumber: 1, etag: 'x' }]))).toBe(404)
+  })
+
   it('limits how many uploads a library can have open at once', async () => {
     const { svc } = await setup()
     for (let i = 0; i < 8; i++) await svc.createUpload('liba', `abcdefghjkmnpqrstvwxy${String(i).padStart(2, '0')}`)

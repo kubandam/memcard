@@ -17,7 +17,7 @@ export interface LibraryStore {
   removeObject(libraryId: string, key: string): Promise<number>
   listObjects(libraryId: string): Promise<{ key: string; size: number }[]>
   putUpload(id: string, libraryId: string, key: string, uploadId: string): Promise<void>
-  getUpload(id: string): Promise<{ libraryId: string; key: string; uploadId: string } | null>
+  getUpload(id: string): Promise<{ libraryId: string; key: string; uploadId: string; createdAt: number } | null>
   deleteUpload(id: string): Promise<void>
   /** Reserves the bytes of one received part; re-sending a part replaces its reservation. */
   setPartBytes(id: string, part: number, bytes: number): Promise<void>
@@ -80,7 +80,7 @@ export function createMemoryStore(now: () => number = Date.now): LibraryStore {
     },
     async getUpload(id) {
       const u = uploads.get(id)
-      return u ? { libraryId: u.libraryId, key: u.key, uploadId: u.uploadId } : null
+      return u ? { libraryId: u.libraryId, key: u.key, uploadId: u.uploadId, createdAt: u.createdAt } : null
     },
     async deleteUpload(id) {
       uploads.delete(id)
@@ -164,8 +164,8 @@ export function createD1Store(db: D1Database): LibraryStore {
       await db.prepare('INSERT OR REPLACE INTO uploads (id, library_id, key, upload_id, created_at) VALUES (?1, ?2, ?3, ?4, ?5)').bind(id, libraryId, key, uploadId, now()).run()
     },
     async getUpload(id) {
-      const r = await db.prepare('SELECT library_id, key, upload_id FROM uploads WHERE id = ?1').bind(id).first<{ library_id: string; key: string; upload_id: string }>()
-      return r ? { libraryId: r.library_id, key: r.key, uploadId: r.upload_id } : null
+      const r = await db.prepare('SELECT library_id, key, upload_id, created_at FROM uploads WHERE id = ?1').bind(id).first<{ library_id: string; key: string; upload_id: string; created_at: number }>()
+      return r ? { libraryId: r.library_id, key: r.key, uploadId: r.upload_id, createdAt: r.created_at } : null
     },
     async deleteUpload(id) {
       await db.batch([db.prepare('DELETE FROM upload_parts WHERE upload_id = ?1').bind(id), db.prepare('DELETE FROM uploads WHERE id = ?1').bind(id)])

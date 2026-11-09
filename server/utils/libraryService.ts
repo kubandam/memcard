@@ -43,6 +43,12 @@ export function createLibraryService(deps: { store: LibraryStore; r2: R2Bucket; 
   async function requireUpload(libraryId: string, key: string, uploadId: string) {
     const up = await store.getUpload(uploadId)
     if (!up || up.libraryId !== libraryId || up.key !== key) throw new ServiceError(404)
+    // Past the expiry window it no longer counts against the quota, so it must not take parts either.
+    if (up.createdAt < since()) {
+      await r2.resumeMultipartUpload(objectPath(libraryId, key), uploadId).abort().catch(() => undefined)
+      await store.deleteUpload(uploadId)
+      throw new ServiceError(404)
+    }
     return up
   }
 
