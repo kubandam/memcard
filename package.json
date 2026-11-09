@@ -12,7 +12,9 @@
     "test:e2e": "playwright test",
     "deploy": "nuxt build && wrangler deploy",
     "typecheck": "nuxt typecheck",
-    "fixture": "node scripts/build-fixture.mjs"
+    "fixture": "node scripts/build-fixture.mjs",
+    "d1:migrate:local": "wrangler d1 migrations apply memcard --local",
+    "d1:migrate": "wrangler d1 migrations apply memcard --remote"
   },
   "dependencies": {
     "@nuxtjs/i18n": "^10.6.0",
@@ -22,11 +24,13 @@
     "vue-router": "^5.4.0"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261109.1",
     "@nuxt/test-utils": "^4.4.0",
     "@playwright/test": "^1.65.0",
     "@vue/test-utils": "^2.5.1",
     "fake-indexeddb": "^6.2.8",
     "happy-dom": "^21.0.4",
+    "nitro-cloudflare-dev": "^0.2.2",
     "vitest": "^5.1.0",
     "wrangler": "^4.159.0"
   },

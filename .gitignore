@@ -48,3 +48,5 @@ games/
 *.iso
 *.img
 !tests/fixtures/**
+
+.dev.vars
