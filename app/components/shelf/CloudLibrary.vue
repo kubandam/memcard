@@ -5,7 +5,8 @@ import { formatBytes } from '~/utils/format'
 import { listGames } from '~/utils/localDb'
 
 const { t } = useI18n()
-const { games, usage, uploadProgress, notice, recoveryKey, close, uploadGame, deleteGame, renameGame, resumeUploads, coverUrl, isInCloud } = useCloudLibrary()
+const { games, usage, uploadProgress, downloadProgress, notice, recoveryKey, close, uploadGame, deleteGame, renameGame, resumeUploads, coverUrl, isInCloud, downloadToLocal } = useCloudLibrary()
+const emit = defineEmits<{ downloaded: [] }>()
 
 const pickerOpen = ref(false)
 const candidates = ref<LocalGame[]>([])
@@ -13,6 +14,21 @@ const covers = ref<Record<string, string>>({})
 const renaming = ref<string | null>(null)
 const renameValue = ref('')
 const confirmingDelete = ref<string | null>(null)
+const localGames = ref<LocalGame[]>([])
+
+async function loadLocal() {
+  localGames.value = await listGames()
+}
+
+function isLocal(game: { title: string; sizeBytes: number }) {
+  return localGames.value.some((l) => l.title === game.title && l.sizeBytes === game.sizeBytes)
+}
+
+async function download(id: string) {
+  await downloadToLocal(id)
+  await loadLocal()
+  emit('downloaded')
+}
 
 async function loadCovers() {
   for (const g of games.value) {
@@ -26,6 +42,7 @@ watch(games, loadCovers)
 
 onMounted(() => {
   loadCovers()
+  loadLocal()
   resumeUploads()
 })
 
@@ -94,7 +111,10 @@ async function onDelete(id: string) {
             <button type="button" class="link-button label" @click="commitRename">{{ t('home.save') }}</button>
           </template>
           <template v-else>
-            <slot name="game-actions" :game="game" />
+            <span v-if="isLocal(game)" class="label">{{ t('cloud.inMyGames') }}</span>
+            <button v-else type="button" data-download class="link-button label" :disabled="!!downloadProgress" @click="download(game.id)">
+              {{ downloadProgress?.gameId === game.id ? `${Math.round((downloadProgress.done / Math.max(1, downloadProgress.total)) * 100)} %` : t('cloud.download') }}
+            </button>
             <button type="button" class="link-button label" @click="(renaming = game.id), (renameValue = game.title)">{{ t('home.rename') }}</button>
             <button type="button" class="link-button label" :class="{ 'link-button--danger': confirmingDelete === game.id }" @click="onDelete(game.id)">
               {{ confirmingDelete === game.id ? t('home.confirmDelete') : t('home.delete') }}

@@ -70,7 +70,7 @@ async function confirmDelete(id: string) {
         <h2 id="online-library" class="display library-head__title">{{ t('cloud.section') }}</h2>
       </div>
       <ClientOnly>
-        <CloudLibrary v-if="cloud.status.value === 'open'" />
+        <CloudLibrary v-if="cloud.status.value === 'open'" @downloaded="refresh" />
         <CloudPanel v-else />
       </ClientOnly>
     </section>

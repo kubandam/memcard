@@ -8,7 +8,7 @@ import { newGameKey, newObjectKey } from '~~/shared/utils/chunkCrypto'
 import { ApiError, createCloudApi, type CloudApi } from '~/utils/cloudApi'
 import { ResumeMismatchError, uploadObject } from '~/utils/cloudUpload'
 import { downloadObject } from '~/utils/cloudDownload'
-import { deleteUploadState, getBlob, getGame, getSetting, getUploadStates, putUploadState, setSetting } from '~/utils/localDb'
+import { addGame, deleteUploadState, getBlob, getGame, getSetting, getUploadStates, putUploadState, setCover, setSetting } from '~/utils/localDb'
 import type { LibraryNotice } from './useLocalLibrary'
 
 /** A cloud upload in progress, kept in local settings so it can resume after a reload. */
@@ -49,6 +49,7 @@ interface CloudState {
   busy: Ref<string | null>
   recoveryKey: Ref<string | null>
   uploadProgress: Ref<UploadProgress | null>
+  downloadProgress: Ref<UploadProgress | null>
   keys: LibraryKeys | null
   api: CloudApi | null
   etag: string | null
@@ -67,6 +68,7 @@ function freshState(): CloudState {
     busy: ref(null),
     recoveryKey: ref(null),
     uploadProgress: ref(null),
+    downloadProgress: ref(null),
     keys: null,
     api: null,
     etag: null,
@@ -390,6 +392,41 @@ export function useCloudLibrary() {
     }
   }
 
+  /** Downloads and decrypts every file of a cloud game into named Files (in memory). */
+  async function downloadGameFiles(game: CloudGame, onProgress?: (done: number, total: number) => void): Promise<File[]> {
+    const { api } = requireOpen()
+    const kGame = fromBase64Url(game.kGame)
+    const out: File[] = []
+    let before = 0
+    for (const ref of game.files) {
+      const bytes = await downloadObject(api, ref, kGame, (d) => onProgress?.(before + d, game.sizeBytes))
+      out.push(new File([bytes as BlobPart], ref.name))
+      before += ref.size
+    }
+    return out
+  }
+
+  /** Copies a cloud game into this browser's local library so it plays offline. */
+  async function downloadToLocal(id: string): Promise<LocalGame> {
+    const game = s.games.value.find((g) => g.id === id)
+    if (!game) throw new Error('Game not found')
+    s.downloadProgress.value = { gameId: id, title: game.title, done: 0, total: game.sizeBytes }
+    try {
+      const files = await downloadGameFiles(game, (done, total) => {
+        s.downloadProgress.value = { gameId: id, title: game.title, done, total }
+      })
+      const added = await addGame({ title: game.title, kind: game.kind, primaryName: game.primaryName, files, generatedM3u: game.generatedM3u, totalBytes: game.sizeBytes })
+      const cover = await coverUrl(game)
+      if (cover) {
+        await setCover(added.id, await (await fetch(cover)).blob())
+        return (await getGame(added.id)) ?? added
+      }
+      return added
+    } finally {
+      s.downloadProgress.value = null
+    }
+  }
+
   async function renameGame(id: string, title: string): Promise<void> {
     const trimmed = title.trim()
     if (!trimmed) return
@@ -414,6 +451,9 @@ export function useCloudLibrary() {
     deleteGame,
     renameGame,
     coverUrl,
+    downloadGameFiles,
+    downloadToLocal,
+    downloadProgress: s.downloadProgress,
     open,
     create,
     close,

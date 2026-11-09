@@ -24,6 +24,14 @@ vi.mock('../../app/utils/localDb', async (importOriginal) => {
 
 mockNuxtImport('useRoute', () => () => state.route)
 
+const cloudMock = vi.hoisted(() => ({
+  status: { value: 'closed' as string },
+  games: { value: [] as unknown[] },
+  restore: async () => {},
+  downloadGameFiles: async (_g: unknown, _p?: (d: number, t: number) => void) => [new File([new Uint8Array(4)], 'Cloud Game.chd')] as File[],
+}))
+mockNuxtImport('useCloudLibrary', () => () => cloudMock)
+
 const game: LocalGame = {
   id: 'g1',
   title: 'Magic Castle',
@@ -112,6 +120,30 @@ describe('play page', () => {
     handlers.saveDatabaseLoaded!({ writeFile: (p: string, d: Uint8Array) => writes.push([p, d]) })
     expect(writes.map(([p]) => p)).toEqual(['/scph5501.bin'])
     expect(writes[0]![1]).toBeInstanceOf(Uint8Array)
+  })
+
+  it('cloud: with the library closed it says so and never loads the emulator', async () => {
+    state.route = { params: { source: 'cloud', id: 'c1' }, query: {} }
+    cloudMock.status.value = 'closed'
+    const wrapper = await mountSuspended(PlayPage)
+    await flushPromises()
+    expect(wrapper.text()).toMatch(/library is closed/i)
+    expect(injected.scripts).toHaveLength(0)
+    state.route = { params: { source: 'local', id: 'g1' }, query: {} }
+  })
+
+  it('cloud: downloads, decrypts and boots the game', async () => {
+    state.route = { params: { source: 'cloud', id: 'c1' }, query: {} }
+    cloudMock.status.value = 'open'
+    cloudMock.games.value = [{ id: 'c1', title: 'Cloud Game', kind: 'single', primaryName: 'Cloud Game.chd', files: [{ name: 'Cloud Game.chd', size: 4, objectKey: 'k', chunks: 1 }], sizeBytes: 4, createdAt: 1, lastPlayedAt: null, kGame: 'x' }]
+    const phases = observePhases()
+    const wrapper = await mountSuspended(PlayPage)
+    await flushPromises()
+    await flushPromises()
+    expect(phases()).toEqual(['reading', 'loading'])
+    expect(wrapper.text()).toContain('Cloud Game')
+    expect(((window as unknown as Record<string, unknown>).EJS_gameUrl as File).name).toBe('Cloud Game.chd')
+    state.route = { params: { source: 'local', id: 'g1' }, query: {} }
   })
 
   it('packs a multi-disc game as playlist + extra files', async () => {

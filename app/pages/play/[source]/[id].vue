@@ -6,6 +6,8 @@ import { sessionGame } from '~/composables/useLocalLibrary'
 import { readKeyboardMapping, type KeyBinding } from '~/utils/emulatorjs'
 import { buildGamePayload, type BlobGetter } from '~/utils/gamePayload'
 import { getBlob, getGame, getSetting, touchLastPlayed } from '~/utils/localDb'
+import { ApiError } from '~/utils/cloudApi'
+import { DecryptError } from '~/utils/cloudDownload'
 
 definePageMeta({ layout: 'boot' })
 
@@ -19,6 +21,7 @@ const id = computed(() => String(route.params.id))
 const { phase, progress, error, setPhase, setSubProgress, fail, start, onSaveExport, flushSaves } = useEmulator()
 const title = ref('')
 const notFound = ref(false)
+const libraryClosed = ref(false)
 const controlsOpen = ref(false)
 const mapping = ref<KeyBinding[]>([])
 
@@ -57,7 +60,7 @@ function ejsColor(): string {
 
 async function boot(game: LocalGame, getter: BlobGetter) {
   title.value = game.title
-  setPhase('reading')
+  if (phase.value !== 'reading') setPhase('reading')
   if (game.kind === 'multi') setPhase('packing')
   const payload = await buildGamePayload(game, getter, (f) => setSubProgress(game.kind === 'multi' ? 'packing' : 'reading', 'loading', f))
   const bios = await readBiosBytes()
@@ -67,6 +70,31 @@ async function boot(game: LocalGame, getter: BlobGetter) {
 async function loadLocal(game: LocalGame) {
   await touchLastPlayed(game.id).catch(() => undefined)
   await boot(game, getBlob)
+}
+
+async function loadCloud(gameId: string) {
+  const cloud = useCloudLibrary()
+  await cloud.restore()
+  if (cloud.status.value !== 'open') return void (libraryClosed.value = true)
+  const game = cloud.games.value.find((g) => g.id === gameId)
+  if (!game) return void (notFound.value = true)
+  title.value = game.title
+  setPhase('reading')
+  const files = await cloud.downloadGameFiles(game, (done, total) => setSubProgress('reading', 'loading', done / Math.max(1, total)))
+  const byName = new Map(files.map((f) => [f.name, f]))
+  const pseudo: LocalGame = {
+    id: game.id,
+    title: game.title,
+    source: 'cloud',
+    kind: game.kind,
+    primaryName: game.primaryName,
+    files: game.files.map((f) => ({ name: f.name, size: f.size, blobKey: f.name })),
+    generatedM3u: game.generatedM3u,
+    sizeBytes: game.sizeBytes,
+    createdAt: game.createdAt,
+    lastPlayedAt: game.lastPlayedAt,
+  }
+  await boot(pseudo, async (key) => byName.get(key))
 }
 
 async function loadSession(game: ClassifiedGame) {
@@ -98,12 +126,17 @@ onMounted(async () => {
       const game = sessionGame.value
       if (!game) return void (notFound.value = true)
       await loadSession(game)
+    } else if (source.value === 'cloud') {
+      await loadCloud(id.value)
     } else {
-      // 'free' (M2) and 'cloud' (M3) are not implemented yet.
+      // 'free' (M2) and 'shared' (M3b) are not implemented yet.
       notFound.value = true
     }
   } catch (err) {
-    fail(err instanceof Error ? err.message : String(err))
+    if (err instanceof DecryptError) fail(t('cloud.corrupt'))
+    else if (err instanceof ApiError && err.status === 404) fail(t('cloud.missingObject'))
+    else if (err instanceof ApiError) fail(t('cloud.network'))
+    else fail(err instanceof Error ? err.message : String(err))
   }
 })
 
@@ -135,7 +168,14 @@ function fullscreen() {
 
 <template>
   <div id="stage" class="stage" :class="{ 'stage--running': phase === 'running' }">
-    <template v-if="notFound">
+    <template v-if="libraryClosed">
+      <div class="not-found">
+        <h1 class="not-found__title">{{ t('cloud.closedTitle') }}</h1>
+        <p class="not-found__text">{{ t('cloud.closedHint') }}</p>
+        <a href="/" class="exit-link">{{ t('player.backToLibrary') }}</a>
+      </div>
+    </template>
+    <template v-else-if="notFound">
       <div class="not-found">
         <h1 class="not-found__title">{{ t('player.notFound') }}</h1>
         <p class="not-found__text">{{ t('player.notFoundHint') }}</p>

@@ -180,6 +180,13 @@
     "pickTitle": "Choose a game from My games",
     "pickEmpty": "All your local games are already online.",
     "pickHint": "Add new games to My games first; they are encrypted in this browser before upload.",
-    "empty": "No games online yet. Upload one from My games."
+    "empty": "No games online yet. Upload one from My games.",
+    "closedTitle": "Library is closed",
+    "closedHint": "Open your online library on the home page with its passphrase, then start the game again.",
+    "corrupt": "This game's online copy is damaged or was tampered with, so it was not started.",
+    "missingObject": "Part of this game is missing from the online library.",
+    "download": "Download to this PC",
+    "downloading": "Downloading {title}",
+    "inMyGames": "In My games"
   }
 }

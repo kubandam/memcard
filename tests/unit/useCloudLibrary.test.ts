@@ -170,3 +170,45 @@ describe('useCloudLibrary — uploads', () => {
     expect(fake.objects.size).toBe(0)
   }, 60_000)
 })
+
+import { listGames } from '../../app/utils/localDb'
+
+describe('useCloudLibrary — download', () => {
+  beforeEach(() => {
+    globalThis.indexedDB = new IDBFactory()
+    __resetDbForTests()
+    __resetCloudForTests()
+    sessionStorageShim()
+  })
+
+  it('downloadToLocal adds the decrypted game (files + cover) to My games', async () => {
+    const f = createFakeCloudApi()
+    __setCloudApiFactory(() => f.api)
+    const lib = useCloudLibrary()
+    await lib.create(PASS, 'good')
+    const g = await localGame([['d.cue', 20], ['d.bin', 3 * MiB]], 'Down Load')
+    await setCover(g.id, new Blob([new Uint8Array(30).fill(3)], { type: 'image/png' }))
+    const { getGame: fresh, deleteGame: drop } = await import('../../app/utils/localDb')
+    await lib.uploadGame((await fresh(g.id))!)
+    await drop(g.id)
+    expect(await listGames()).toEqual([])
+
+    const added = await lib.downloadToLocal(lib.games.value[0]!.id)
+    const all = await listGames()
+    expect(all.map((x) => x.title)).toEqual(['Down Load'])
+    expect(added.files.map((x) => [x.name, x.size])).toEqual([['d.cue', 20], ['d.bin', 3 * MiB]])
+    expect(added.coverBlobKey).toBeTruthy()
+    expect(added.primaryName).toBe('d.cue')
+  }, 60_000)
+
+  it('downloadGameFiles returns named Files with the original bytes', async () => {
+    const f = createFakeCloudApi()
+    __setCloudApiFactory(() => f.api)
+    const lib = useCloudLibrary()
+    await lib.create(PASS, 'good')
+    await lib.uploadGame(await localGame([['solo.chd', 1234]], 'Solo'))
+    const files = await lib.downloadGameFiles(lib.games.value[0]!)
+    expect(files.map((x) => [x.name, x.size])).toEqual([['solo.chd', 1234]])
+    expect(new Uint8Array(await files[0]!.arrayBuffer())[0]).toBe('solo.chd'.length)
+  }, 60_000)
+})

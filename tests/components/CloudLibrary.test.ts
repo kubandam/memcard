@@ -29,6 +29,8 @@ describe('CloudLibrary', () => {
       resumeUploads: vi.fn(async () => {}),
       coverUrl: vi.fn(async () => undefined),
       isInCloud: (g: LocalGame) => g.title === 'Crash' && g.sizeBytes === 100,
+      downloadToLocal: vi.fn(async () => local('l9', 'Spyro', 200)),
+      downloadProgress: ref(null),
     })
     lib.games = [local('l1', 'Crash', 100), local('l2', 'Spyro', 200)]
   })
@@ -56,6 +58,17 @@ describe('CloudLibrary', () => {
     expect(options.map((o) => o.text())).toEqual([expect.stringContaining('Spyro')])
     await options[0]!.trigger('click')
     expect(cloud.uploadGame).toHaveBeenCalledWith(expect.objectContaining({ id: 'l2' }))
+  })
+
+  it('marks games already in My games and downloads the others', async () => {
+    ;(cloud.games as { value: unknown[] }).value.push({ id: 'c2', title: 'Spyro', kind: 'single', primaryName: 's.chd', files: [], sizeBytes: 999, createdAt: 1, lastPlayedAt: null, kGame: 'k' })
+    const w = await mountSuspended(CloudLibrary)
+    await flushPromises()
+    const tiles = w.findAll('.tile')
+    expect(tiles[0]!.text()).toMatch(/in my games/i)
+    const btn = tiles[1]!.find('[data-download]')
+    await btn.trigger('click')
+    expect(cloud.downloadToLocal).toHaveBeenCalledWith('c2')
   })
 
   it('resumes interrupted uploads when shown', async () => {
