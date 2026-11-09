@@ -1,8 +1,22 @@
 {
-  "site": { "name": "Memcard" },
-  "nav": { "label": "Main", "home": "Library", "settings": "Settings", "about": "About" },
-  "theme": { "label": "Theme", "dark": "Dark", "grey": "Grey" },
-  "footer": { "source": "Source code", "emulator": "Powered by EmulatorJS" },
+  "site": {
+    "name": "Memcard"
+  },
+  "nav": {
+    "label": "Main",
+    "home": "Library",
+    "settings": "Settings",
+    "about": "About"
+  },
+  "theme": {
+    "label": "Theme",
+    "dark": "Dark",
+    "grey": "Grey"
+  },
+  "footer": {
+    "source": "Source code",
+    "emulator": "Powered by EmulatorJS"
+  },
   "about": {
     "title": "About",
     "whatTitle": "What this is",
@@ -17,5 +31,45 @@
     "licence2": "Emulation by EmulatorJS (GPL-3.0) running the libretro pcsx_rearmed core (GPL-2.0).",
     "licence3": "Fonts: Archivo Narrow, Inter and Chakra Petch under the SIL Open Font License 1.1.",
     "sourceTitle": "Source code"
+  },
+  "home": {
+    "title": "Library",
+    "freeGames": "Free games",
+    "myGames": "My games",
+    "storedLocally": "Stored in this browser",
+    "empty": "No games yet. Add a disc image below.",
+    "playAnyway": "Play anyway (this session only)",
+    "rename": "Rename",
+    "renameLabel": "New title",
+    "save": "Save",
+    "delete": "Delete",
+    "confirmDelete": "Really delete?"
+  },
+  "tile": {
+    "play": "Play {title}",
+    "played": "Played"
+  },
+  "drop": {
+    "title": "Add your own game",
+    "hint": "Drop .chd, .pbp, .iso, .img, .bin + .cue, .m3u, .zip or .7z. We recommend .chd — it is the smallest.",
+    "button": "Choose files",
+    "privacy": "Nothing is uploaded. Files stay in this browser."
+  },
+  "storage": {
+    "used": "{used} used of {total}"
+  },
+  "errors": {
+    "empty": "No files were selected.",
+    "unsupported": "Unsupported file type: {details}. Use .chd, .pbp, .iso, .img, .bin + .cue, .m3u, .zip or .7z.",
+    "missing-cue": "A .bin needs its .cue sheet. Select both files together: {details}",
+    "missing-bin": "The .cue sheet refers to files that were not selected: {details}",
+    "missing-m3u-disc": "The .m3u playlist refers to discs that were not selected: {details}",
+    "mixed": "These files do not belong to one game: {details}. Add one game at a time.",
+    "quota": "This browser is out of storage space, so the game could not be saved. You can still play it right now.",
+    "unavailable": "Storage is unavailable in this browser (private mode?). Games cannot be kept between visits.",
+    "emptyTitle": "A title cannot be empty."
+  },
+  "warnings": {
+    "largeFile": "This is a large image. The emulator keeps the whole file in memory, so low-memory devices may struggle. Converting to .chd makes it much smaller."
   }
 }
