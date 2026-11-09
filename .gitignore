@@ -1,0 +1,40 @@
+# Nuxt dev/build outputs
+.output
+.data
+.nuxt
+.nitro
+.cache
+dist
+
+# Node dependencies
+node_modules
+
+# Logs
+logs
+*.log
+
+# Misc
+.DS_Store
+.fleet
+.idea
+
+# Local env files
+.env
+.env.*
+!.env.example
+
+# Tooling scratch
+.wrangler
+.superpowers
+.playwright-mcp
+.remember
+.claude/settings.local.json
+test-results
+playwright-report
+
+# Test fixtures are rebuilt by scripts/build-fixture.mjs (see tests/fixtures/README.md)
+tests/fixtures/*.iso
+tests/fixtures/*.chd
+tests/fixtures/*.bin
+tests/fixtures/*.cue
+tests/fixtures/*.zip
