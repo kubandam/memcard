@@ -15,7 +15,8 @@ async function download(gameId: string) {
   try {
     if (await downloadToLocal({ shareId: props.library.shareId, game, libraryId: props.library.libraryId })) emit('downloaded')
   } catch (err) {
-    error.value = (err as Error)?.name === 'ShareRevokedError' ? 'share.invalid' : (err as Error)?.name === 'DecryptError' ? 'cloud.corrupt' : 'cloud.network'
+    const n = (err as Error)?.name
+    error.value = n === 'ShareRevokedError' ? 'share.invalid' : n === 'SharedGameGoneError' ? 'share.gameGone' : n === 'DecryptError' ? 'cloud.corrupt' : n === 'StorageError' ? 'errors.quota' : 'cloud.network'
   }
 }
 </script>

@@ -215,6 +215,8 @@
     "remove": "Remove",
     "revokedLibrary": "This shared library's code is no longer valid. Games you already downloaded stay in My games.",
     "emptyLibrary": "No games in this library yet.",
-    "haveCode": "Have a code?"
+    "haveCode": "Have a code?",
+    "tooManyCodes": "Too many active codes. Revoke some under Codes you issued, then try again.",
+    "gameGone": "This game was removed from the shared library."
   }
 }

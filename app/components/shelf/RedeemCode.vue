@@ -43,7 +43,8 @@ async function onDownload() {
       emit('downloaded')
     }
   } catch (err) {
-    error.value = (err as Error)?.name === 'ShareRevokedError' ? 'share.invalid' : (err as Error)?.name === 'StorageError' ? 'errors.quota' : 'cloud.network'
+    const n = (err as Error)?.name
+    error.value = n === 'ShareRevokedError' || n === 'SharedGameGoneError' ? 'share.invalid' : n === 'DecryptError' ? 'cloud.corrupt' : n === 'StorageError' ? 'errors.quota' : 'cloud.network'
   }
 }
 </script>

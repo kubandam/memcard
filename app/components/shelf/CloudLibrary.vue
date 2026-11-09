@@ -17,13 +17,20 @@ const confirmingDelete = ref<string | null>(null)
 const localGames = ref<LocalGame[]>([])
 const shareResult = ref<{ code: string; note: string } | null>(null)
 const sharing = ref(false)
+const shareError = ref<string | null>(null)
+
+function shareErrorKey(err: unknown): string {
+  return (err as { status?: number })?.status === 429 ? 'share.tooManyCodes' : 'cloud.network'
+}
 
 async function onShareGame(id: string) {
   sharing.value = true
+  shareError.value = null
   try {
     shareResult.value = { code: await shareGame(id), note: t('share.gameNote') }
-  } catch {
+  } catch (err) {
     shareResult.value = null
+    shareError.value = shareErrorKey(err)
   } finally {
     sharing.value = false
   }
@@ -31,10 +38,12 @@ async function onShareGame(id: string) {
 
 async function onShareLibrary() {
   sharing.value = true
+  shareError.value = null
   try {
     shareResult.value = { code: await shareLibrary(), note: t('share.libraryNote') }
-  } catch {
+  } catch (err) {
     shareResult.value = null
+    shareError.value = shareErrorKey(err)
   } finally {
     sharing.value = false
   }
@@ -112,6 +121,7 @@ async function onDelete(id: string) {
     </div>
 
     <Notice v-if="notice" :kind="notice.kind">{{ t(notice.key) }}</Notice>
+    <Notice v-if="shareError" kind="error">{{ t(shareError) }}</Notice>
     <ShareCodeBox v-if="shareResult" :code="shareResult.code" :note="shareResult.note" @close="shareResult = null" />
     <IssuedShares />
 

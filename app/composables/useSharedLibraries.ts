@@ -17,6 +17,14 @@ export class ShareRevokedError extends Error {
   }
 }
 
+/** The code still works, but the owner removed this game from the library. */
+export class SharedGameGoneError extends Error {
+  constructor() {
+    super('This game is no longer in the shared library')
+    this.name = 'SharedGameGoneError'
+  }
+}
+
 interface ShareTransport {
   lookup: (shareId: string) => Promise<ShareLookup>
   reader: (shareId: string, libraryId: string) => ShareReader
@@ -165,6 +173,21 @@ export function useSharedLibraries() {
       }
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) {
+        // Either the code was revoked, or only this game was removed: ask the server which.
+        let stillValid = false
+        try {
+          await transport.lookup(shareId)
+          stillValid = true
+        } catch {
+          stillValid = false
+        }
+        const saved = (await readSaved()).find((x) => x.shareId === shareId)
+        if (stillValid && saved) {
+          const fresh = await loadLibrary(saved)
+          s.libraries.value = s.libraries.value.map((l) => (l.shareId === shareId ? fresh : l))
+          throw new SharedGameGoneError()
+        }
+        if (stillValid) throw new SharedGameGoneError()
         s.libraries.value = s.libraries.value.map((l) => (l.shareId === shareId ? { ...l, status: 'revoked' } : l))
         throw new ShareRevokedError()
       }

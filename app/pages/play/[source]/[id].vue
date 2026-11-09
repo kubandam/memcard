@@ -8,7 +8,7 @@ import { buildGamePayload, type BlobGetter } from '~/utils/gamePayload'
 import { getBlob, getGame, getSetting, touchLastPlayed } from '~/utils/localDb'
 import { ApiError } from '~/utils/cloudApi'
 import { DecryptError } from '~/utils/cloudDownload'
-import { ShareRevokedError } from '~/composables/useSharedLibraries'
+import { SharedGameGoneError, ShareRevokedError } from '~/composables/useSharedLibraries'
 
 definePageMeta({ layout: 'boot' })
 
@@ -104,6 +104,7 @@ async function loadShared(gameId: string, shareId: string) {
   const lib = shared.libraries.value.find((l) => l.shareId === shareId)
   if (!lib) return void (notFound.value = true)
   if (lib.status === 'revoked') throw new ShareRevokedError()
+  if (lib.status === 'error') throw new ApiError(503)
   const game = lib.games.find((g) => g.id === gameId)
   if (!game) return void (notFound.value = true)
   title.value = game.title
@@ -166,6 +167,7 @@ onMounted(async () => {
     }
   } catch (err) {
     if (err instanceof ShareRevokedError) fail(t('share.invalid'))
+    else if (err instanceof SharedGameGoneError) fail(t('share.gameGone'))
     else if (err instanceof DecryptError) fail(t('cloud.corrupt'))
     else if (err instanceof ApiError && err.status === 404) fail(t('cloud.missingObject'))
     else if (err instanceof ApiError) fail(t('cloud.network'))

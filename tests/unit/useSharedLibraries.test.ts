@@ -2,7 +2,7 @@
 import { IDBFactory } from 'fake-indexeddb'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { __resetCloudForTests, __setCloudApiFactory, useCloudLibrary } from '../../app/composables/useCloudLibrary'
-import { __resetSharedForTests, __setShareTransport, ShareRevokedError, useSharedLibraries } from '../../app/composables/useSharedLibraries'
+import { __resetSharedForTests, __setShareTransport, SharedGameGoneError, ShareRevokedError, useSharedLibraries } from '../../app/composables/useSharedLibraries'
 import { __resetDbForTests, addGame, listGames } from '../../app/utils/localDb'
 import { deriveShareKeys, parseShareCode, unwrapPayload } from '../../shared/utils/shareCodes'
 import { createFakeCloudApi } from './fakeCloudApi'
@@ -134,5 +134,40 @@ describe('untrusted shared manifests', () => {
     const shared = useSharedLibraries()
     await shared.redeem(code)
     expect(shared.libraries.value[0]!.games.map((g) => g.title)).toEqual(['Good Game'])
+  }, 60_000)
+})
+
+describe('shared library: a game deleted by the owner', () => {
+  beforeEach(() => {
+    globalThis.indexedDB = new IDBFactory()
+    __resetDbForTests(); __resetCloudForTests(); __resetSharedForTests(); sessionStorageShim()
+  })
+
+  it('reports the game as gone and drops it, keeping the library usable', async () => {
+    const { owner } = await ownerWithGame('Keep Me')
+    const code = await owner.shareLibrary()
+    const shared = useSharedLibraries()
+    await shared.redeem(code)
+    const stale = shared.libraries.value[0]!.games[0]!
+    await owner.deleteGame(owner.games.value[0]!.id)
+    await expect(shared.downloadGameFiles(shared.libraries.value[0]!.shareId, stale)).rejects.toBeInstanceOf(SharedGameGoneError)
+    expect(shared.libraries.value[0]!.status).toBe('ok')
+    expect(shared.libraries.value[0]!.games).toEqual([])
+  }, 60_000)
+})
+
+describe('privacy of shared payloads', () => {
+  beforeEach(() => {
+    globalThis.indexedDB = new IDBFactory()
+    __resetDbForTests(); __resetCloudForTests(); __resetSharedForTests(); sessionStorageShim()
+  })
+
+  it('a game code does not reveal when the owner last played it', async () => {
+    const { f, owner, cloudGame } = await ownerWithGame()
+    await owner.saveManifest((m) => { m.games[0]!.lastPlayedAt = 123456 })
+    const code = await owner.shareGame(cloudGame.id)
+    const { shareId, kShare } = await deriveShareKeys(parseShareCode(code)!)
+    const p = await unwrapPayload(kShare, f.shares.get(shareId)!.wrapped)
+    expect(p.kind === 'game' && p.game.lastPlayedAt).toBeNull()
   }, 60_000)
 })

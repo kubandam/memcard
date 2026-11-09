@@ -429,7 +429,8 @@ export function useCloudLibrary() {
     if (!game) throw new Error('Game not found')
     const keys = game.files.map((f) => f.objectKey)
     if (game.coverObjectKey) keys.push(game.coverObjectKey)
-    return issueShare({ v: 1, kind: 'game', game: structuredClone(toRaw(game)) }, game.id, keys)
+    // Recipients do not need (and should not learn) when the owner last played it.
+    return issueShare({ v: 1, kind: 'game', game: { ...structuredClone(toRaw(game)), lastPlayedAt: null } }, game.id, keys)
   }
 
   /** Creates a code that lets anyone see and play the whole library (read-only). */

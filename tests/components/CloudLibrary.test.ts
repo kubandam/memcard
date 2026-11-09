@@ -85,6 +85,14 @@ describe('CloudLibrary', () => {
     expect(w.text()).toMatch(/download this game/i)
   })
 
+  it('a failed Share shows why instead of doing nothing', async () => {
+    ;(cloud.shareGame as ReturnType<typeof vi.fn>).mockRejectedValueOnce(Object.assign(new Error('x'), { name: 'ApiError', status: 429 }))
+    const w = await mountSuspended(CloudLibrary)
+    await w.find('.tile [data-share]').trigger('click')
+    await flushPromises()
+    expect(w.find('[role=alert]').text()).toMatch(/too many active codes/i)
+  })
+
   it('Share library shows a library code and warns it includes games added later', async () => {
     const w = await mountSuspended(CloudLibrary)
     await w.find('[data-share-library]').trigger('click')

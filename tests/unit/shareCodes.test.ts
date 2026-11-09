@@ -45,7 +45,7 @@ describe('share keys and payloads', () => {
     const { kShare } = await deriveShareKeys(SECRET)
     const lib = { v: 1 as const, kind: 'library' as const, kLib: toBase64Url(new Uint8Array(32).fill(7)) }
     expect(await unwrapPayload(kShare, await wrapPayload(kShare, lib))).toEqual(lib)
-    const game = { v: 1 as const, kind: 'game' as const, game: { id: 'g', title: 'T', kind: 'single' as const, primaryName: 't.chd', files: [{ name: 't.chd', size: 1, objectKey: 'abcdefghjkmnpqrstvwxyz00', chunks: 1 }], sizeBytes: 1, createdAt: 1, lastPlayedAt: null, kGame: 'x' } }
+    const game = { v: 1 as const, kind: 'game' as const, game: { id: '2c7a2d1c-0000-4000-8000-000000000000', title: 'T', kind: 'single' as const, primaryName: 't.chd', files: [{ name: 't.chd', size: 1, objectKey: 'abcdefghjkmnpqrstvwxyz0', chunks: 1 }], sizeBytes: 1, createdAt: 1, lastPlayedAt: null, kGame: 'x' } }
     const w = await wrapPayload(kShare, game)
     expect(await unwrapPayload(kShare, w)).toEqual(game)
     const other = await deriveShareKeys(newShareSecret())
@@ -54,7 +54,7 @@ describe('share keys and payloads', () => {
 
   it('rejects a game payload with unsafe file names', async () => {
     const { kShare } = await deriveShareKeys(SECRET)
-    const evil = { v: 1, kind: 'game', game: { id: 'g', title: 'T', kind: 'single', primaryName: '../data/saves/x.srm', files: [{ name: '../data/saves/x.srm', size: 1, objectKey: 'abcdefghjkmnpqrstvwxyz00', chunks: 1 }], sizeBytes: 1, createdAt: 1, lastPlayedAt: null, kGame: 'x' } }
+    const evil = { v: 1, kind: 'game', game: { id: 'g', title: 'T', kind: 'single', primaryName: '../data/saves/x.srm', files: [{ name: '../data/saves/x.srm', size: 1, objectKey: 'abcdefghjkmnpqrstvwxyz0', chunks: 1 }], sizeBytes: 1, createdAt: 1, lastPlayedAt: null, kGame: 'x' } }
     await expect(unwrapPayload(kShare, await encryptJson(kShare, evil))).rejects.toThrow()
   })
 

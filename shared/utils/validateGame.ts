@@ -1,4 +1,9 @@
 import type { CloudGame } from '../types/library'
+import { CHUNK_SIZE } from './chunkCrypto'
+
+const OBJECT_KEY = /^[0-9a-hjkmnp-tv-z]{23}$/
+const GAME_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+const isCount = (n: unknown) => typeof n === 'number' && Number.isSafeInteger(n) && n >= 0
 
 const FILE_EXT = /\.(chd|pbp|iso|img|bin|cue|m3u|zip|7z)$/i
 
@@ -21,12 +26,16 @@ export function isSafeFileName(name: unknown): name is string {
 export function validateCloudGame(value: unknown): value is CloudGame {
   const g = value as CloudGame | null
   if (!g || typeof g !== 'object') return false
-  if (typeof g.id !== 'string' || typeof g.title !== 'string' || typeof g.kGame !== 'string') return false
+  if (typeof g.id !== 'string' || !GAME_ID.test(g.id) || typeof g.title !== 'string' || typeof g.kGame !== 'string') return false
+  if (!isCount(g.sizeBytes) || !isCount(g.createdAt)) return false
+  if (g.coverObjectKey !== undefined && (!OBJECT_KEY.test(g.coverObjectKey) || !isCount(g.coverSize))) return false
   if (g.kind !== 'single' && g.kind !== 'multi') return false
   if (!Array.isArray(g.files) || g.files.length === 0 || g.files.length > 64) return false
   const names = new Set<string>()
   for (const f of g.files) {
-    if (!f || !isSafeFileName(f.name) || typeof f.objectKey !== 'string' || !Number.isFinite(f.size) || f.size < 0) return false
+    if (!f || !isSafeFileName(f.name) || typeof f.objectKey !== 'string' || !OBJECT_KEY.test(f.objectKey) || !isCount(f.size)) return false
+    // The chunk count drives truncation detection on download, so it must match the size exactly.
+    if (f.chunks !== Math.ceil(f.size / CHUNK_SIZE)) return false
     if (names.has(f.name.toLowerCase())) return false
     names.add(f.name.toLowerCase())
   }
