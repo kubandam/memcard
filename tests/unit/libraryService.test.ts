@@ -8,10 +8,10 @@ const MiB = 1024 * 1024
 const K1 = 'abcdefghjkmnpqrstvwxyz0'
 const K2 = 'abcdefghjkmnpqrstvwxyz1'
 
-async function setup(hardLimit = 100 * MiB) {
-  const store = createMemoryStore()
+async function setup(hardLimit = 100 * MiB, libraryLimit = hardLimit, now = () => Date.now()) {
+  const store = createMemoryStore(now)
   const r2 = createFakeR2()
-  const svc = createLibraryService({ store, r2: r2.bucket as never, hardLimit })
+  const svc = createLibraryService({ store, r2: r2.bucket as never, hardLimit, libraryLimit, now })
   await store.createLibrary('liba', 'v')
   await store.createLibrary('libb', 'v')
   return { store, r2, svc }
@@ -78,6 +78,38 @@ describe('multipart objects', () => {
     // Aborting frees the reserved bytes.
     await svc.abortUpload('liba', K1, a.uploadId)
     expect(await code(svc.uploadPart('liba', K2, b.uploadId, 1, new Uint8Array(8 * MiB)))).toBe('ok')
+  })
+
+  it('re-sending the same part replaces its reservation instead of adding to it', async () => {
+    const { svc } = await setup(20 * MiB)
+    const { uploadId } = await svc.createUpload('liba', K1)
+    for (let i = 0; i < 5; i++) await svc.uploadPart('liba', K1, uploadId, 1, new Uint8Array(8 * MiB))
+    const b = await svc.createUpload('liba', K2)
+    expect(await code(svc.uploadPart('liba', K2, b.uploadId, 1, new Uint8Array(8 * MiB)))).toBe('ok')
+  })
+
+  it('one library cannot use more than its own limit, leaving space for others', async () => {
+    const { svc } = await setup(100 * MiB, 10 * MiB)
+    const a = await svc.createUpload('liba', K1)
+    await svc.uploadPart('liba', K1, a.uploadId, 1, new Uint8Array(8 * MiB))
+    const a2 = await svc.createUpload('liba', K2)
+    expect(await code(svc.uploadPart('liba', K2, a2.uploadId, 1, new Uint8Array(8 * MiB)))).toBe(413)
+    const b = await svc.createUpload('libb', K1)
+    expect(await code(svc.uploadPart('libb', K1, b.uploadId, 1, new Uint8Array(8 * MiB)))).toBe('ok')
+  })
+
+  it('uploads older than R2 multipart expiry stop counting and are cleaned up', async () => {
+    let t = 1_000_000
+    const { svc, store } = await setup(12 * MiB, 12 * MiB, () => t)
+    for (let i = 0; i < 8; i++) {
+      const key = `abcdefghjkmnpqrstvwxy${String(i).padStart(2, '0')}`
+      const u = await svc.createUpload('liba', key)
+      if (i === 0) await svc.uploadPart('liba', key, u.uploadId, 1, new Uint8Array(8 * MiB))
+    }
+    t += 8 * 24 * 3600 * 1000
+    const fresh = await svc.createUpload('liba', K1)
+    expect(await code(svc.uploadPart('liba', K1, fresh.uploadId, 1, new Uint8Array(8 * MiB)))).toBe('ok')
+    expect(await store.openUploads('liba', t - 7 * 24 * 3600 * 1000)).toBe(1)
   })
 
   it('limits how many uploads a library can have open at once', async () => {

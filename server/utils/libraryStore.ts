@@ -19,16 +19,20 @@ export interface LibraryStore {
   putUpload(id: string, libraryId: string, key: string, uploadId: string): Promise<void>
   getUpload(id: string): Promise<{ libraryId: string; key: string; uploadId: string } | null>
   deleteUpload(id: string): Promise<void>
-  /** Bytes received so far by an unfinished multipart upload (reserved against the quota). */
-  addUploadBytes(id: string, bytes: number): Promise<void>
-  pendingBytes(): Promise<number>
-  openUploads(libraryId: string): Promise<number>
+  /** Reserves the bytes of one received part; re-sending a part replaces its reservation. */
+  setPartBytes(id: string, part: number, bytes: number): Promise<void>
+  partBytes(id: string, part: number): Promise<number>
+  /** Bytes held by unfinished uploads created at or after `since` (optionally one library). */
+  pendingBytes(since: number, libraryId?: string): Promise<number>
+  openUploads(libraryId: string, since: number): Promise<number>
+  /** Removes uploads created before `before` (R2 has expired them) and returns them. */
+  deleteStaleUploads(before: number): Promise<{ id: string; libraryId: string; key: string }[]>
 }
 
-export function createMemoryStore(): LibraryStore {
+export function createMemoryStore(now: () => number = Date.now): LibraryStore {
   const libs = new Map<string, LibraryRow>()
   const objects = new Map<string, Map<string, number>>()
-  const uploads = new Map<string, { libraryId: string; key: string; uploadId: string; bytes: number }>()
+  const uploads = new Map<string, { libraryId: string; key: string; uploadId: string; createdAt: number; parts: Map<number, number> }>()
   return {
     async createLibrary(id, authVerifier) {
       if (libs.has(id)) return 'exists'
@@ -72,7 +76,7 @@ export function createMemoryStore(): LibraryStore {
       return [...(objects.get(libraryId) ?? new Map()).entries()].map(([key, size]) => ({ key, size }))
     },
     async putUpload(id, libraryId, key, uploadId) {
-      uploads.set(id, { libraryId, key, uploadId, bytes: 0 })
+      uploads.set(id, { libraryId, key, uploadId, createdAt: now(), parts: new Map() })
     },
     async getUpload(id) {
       const u = uploads.get(id)
@@ -81,19 +85,29 @@ export function createMemoryStore(): LibraryStore {
     async deleteUpload(id) {
       uploads.delete(id)
     },
-    async addUploadBytes(id, bytes) {
-      const u = uploads.get(id)
-      if (u) u.bytes += bytes
+    async setPartBytes(id, part, bytes) {
+      uploads.get(id)?.parts.set(part, bytes)
     },
-    async pendingBytes() {
+    async partBytes(id, part) {
+      return uploads.get(id)?.parts.get(part) ?? 0
+    },
+    async pendingBytes(since, libraryId) {
       let n = 0
-      for (const u of uploads.values()) n += u.bytes
+      for (const u of uploads.values()) {
+        if (u.createdAt < since || (libraryId && u.libraryId !== libraryId)) continue
+        for (const b of u.parts.values()) n += b
+      }
       return n
     },
-    async openUploads(libraryId) {
+    async openUploads(libraryId, since) {
       let n = 0
-      for (const u of uploads.values()) if (u.libraryId === libraryId) n++
+      for (const u of uploads.values()) if (u.libraryId === libraryId && u.createdAt >= since) n++
       return n
+    },
+    async deleteStaleUploads(before) {
+      const out: { id: string; libraryId: string; key: string }[] = []
+      for (const [id, u] of uploads) if (u.createdAt < before) (out.push({ id, libraryId: u.libraryId, key: u.key }), uploads.delete(id))
+      return out
     },
   }
 }
@@ -154,18 +168,30 @@ export function createD1Store(db: D1Database): LibraryStore {
       return r ? { libraryId: r.library_id, key: r.key, uploadId: r.upload_id } : null
     },
     async deleteUpload(id) {
-      await db.prepare('DELETE FROM uploads WHERE id = ?1').bind(id).run()
+      await db.batch([db.prepare('DELETE FROM upload_parts WHERE upload_id = ?1').bind(id), db.prepare('DELETE FROM uploads WHERE id = ?1').bind(id)])
     },
-    async addUploadBytes(id, bytes) {
-      await db.prepare('UPDATE uploads SET bytes = bytes + ?2 WHERE id = ?1').bind(id, bytes).run()
+    async setPartBytes(id, part, bytes) {
+      await db.prepare('INSERT OR REPLACE INTO upload_parts (upload_id, part, bytes) VALUES (?1, ?2, ?3)').bind(id, part, bytes).run()
     },
-    async pendingBytes() {
-      const r = await db.prepare('SELECT COALESCE(SUM(bytes), 0) AS n FROM uploads').first<{ n: number }>()
+    async partBytes(id, part) {
+      const r = await db.prepare('SELECT bytes FROM upload_parts WHERE upload_id = ?1 AND part = ?2').bind(id, part).first<{ bytes: number }>()
+      return r?.bytes ?? 0
+    },
+    async pendingBytes(since, libraryId) {
+      const sql = 'SELECT COALESCE(SUM(p.bytes), 0) AS n FROM upload_parts p JOIN uploads u ON u.id = p.upload_id WHERE u.created_at >= ?1' + (libraryId ? ' AND u.library_id = ?2' : '')
+      const stmt = libraryId ? db.prepare(sql).bind(since, libraryId) : db.prepare(sql).bind(since)
+      return (await stmt.first<{ n: number }>())?.n ?? 0
+    },
+    async openUploads(libraryId, since) {
+      const r = await db.prepare('SELECT COUNT(*) AS n FROM uploads WHERE library_id = ?1 AND created_at >= ?2').bind(libraryId, since).first<{ n: number }>()
       return r?.n ?? 0
     },
-    async openUploads(libraryId) {
-      const r = await db.prepare('SELECT COUNT(*) AS n FROM uploads WHERE library_id = ?1').bind(libraryId).first<{ n: number }>()
-      return r?.n ?? 0
+    async deleteStaleUploads(before) {
+      const r = await db.prepare('SELECT id, library_id, key FROM uploads WHERE created_at < ?1 LIMIT 50').bind(before).all<{ id: string; library_id: string; key: string }>()
+      for (const row of r.results) {
+        await db.batch([db.prepare('DELETE FROM upload_parts WHERE upload_id = ?1').bind(row.id), db.prepare('DELETE FROM uploads WHERE id = ?1').bind(row.id)])
+      }
+      return r.results.map((x) => ({ id: x.id, libraryId: x.library_id, key: x.key }))
     },
   }
 }

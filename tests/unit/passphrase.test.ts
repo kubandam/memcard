@@ -4,9 +4,10 @@ import { generatePassphrase, isStrongSecret } from '../../shared/utils/passphras
 import { formatRecoveryKey } from '../../shared/utils/libraryKeys'
 
 describe('passphrase', () => {
-  it('wordlist has 1296 unique words', () => {
-    expect(words).toHaveLength(1296)
-    expect(new Set(words).size).toBe(1296)
+  it('wordlist has 1295 unique letter-only words (yo-yo removed: a dash would split it)', () => {
+    expect(words).toHaveLength(1295)
+    expect(new Set(words).size).toBe(1295)
+    expect(words.every((w: string) => /^[a-z]+$/.test(w))).toBe(true)
   })
   it('generates 4 list words joined by dashes, differently each time', () => {
     const a = generatePassphrase(words)

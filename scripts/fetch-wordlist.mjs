@@ -5,5 +5,7 @@ const URL_ = 'https://www.eff.org/files/2016/09/08/eff_short_wordlist_1.txt'
 const text = await (await fetch(URL_)).text()
 const words = text.split('\n').map((l) => l.trim().split(/\s+/)[1]).filter(Boolean)
 if (words.length !== 1296 || new Set(words).size !== 1296) throw new Error(`Unexpected wordlist size ${words.length}`)
-writeFileSync('app/assets/wordlist/eff-short-1.json', JSON.stringify(words) + '\n')
-console.log('wrote', words.length, 'words')
+// Passphrases join words with "-", so a word containing one ("yo-yo") would read as two.
+const letters = words.filter((w) => /^[a-z]+$/.test(w))
+writeFileSync('app/assets/wordlist/eff-short-1.json', JSON.stringify(letters) + '\n')
+console.log('wrote', letters.length, 'words')
