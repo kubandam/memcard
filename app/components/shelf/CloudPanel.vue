@@ -62,6 +62,9 @@ async function copy(text: string) {
           data-secret
           :type="reveal ? 'text' : 'password'"
           autocomplete="current-password"
+          autocapitalize="off"
+          autocorrect="off"
+          spellcheck="false"
           :placeholder="t('cloud.secretPlaceholder')"
           class="field"
           :aria-label="t('cloud.secretPlaceholder')"
@@ -90,7 +93,7 @@ async function copy(text: string) {
         </div>
       </template>
       <template v-else>
-        <input v-model="custom" data-custom type="text" autocomplete="new-password" class="field" :placeholder="t('cloud.ownPlaceholder')" :aria-label="t('cloud.ownPlaceholder')" />
+        <input v-model="custom" data-custom type="text" autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false" class="field" :placeholder="t('cloud.ownPlaceholder')" :aria-label="t('cloud.ownPlaceholder')" />
         <p v-if="weak" data-weak class="cloud-panel__warn">{{ t('cloud.weak') }}</p>
         <button type="button" class="link-button label" @click="ownPassword = false">{{ t('cloud.useGenerated') }}</button>
       </template>

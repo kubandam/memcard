@@ -6,8 +6,9 @@ import { authVerifierHex, deriveLibraryKeys, deriveRootKey, formatRecoveryKey, p
 import type { LocalGame } from '~~/shared/types/game'
 import { newGameKey, newObjectKey } from '~~/shared/utils/chunkCrypto'
 import { ApiError, createCloudApi, type CloudApi } from '~/utils/cloudApi'
-import { ResumeMismatchError, uploadObject } from '~/utils/cloudUpload'
-import { downloadObject } from '~/utils/cloudDownload'
+import { ResumeMismatchError, UploadCancelledError, uploadObject } from '~/utils/cloudUpload'
+import { DecryptError, downloadObject } from '~/utils/cloudDownload'
+import { StorageError } from '~/utils/localDb'
 import { addGame, deleteUploadState, getBlob, getGame, getSetting, getUploadStates, putUploadState, setCover, setSetting } from '~/utils/localDb'
 import type { LibraryNotice } from './useLocalLibrary'
 
@@ -52,6 +53,10 @@ interface CloudState {
   downloadProgress: Ref<UploadProgress | null>
   keys: LibraryKeys | null
   api: CloudApi | null
+  /** Bumped whenever the open library changes; long operations stop when it moves. */
+  generation: number
+  inFlight: Set<string>
+  resuming: Promise<void> | null
   etag: string | null
   manifest: LibraryManifest
 }
@@ -71,6 +76,9 @@ function freshState(): CloudState {
     downloadProgress: ref(null),
     keys: null,
     api: null,
+    generation: 0,
+    inFlight: new Set(),
+    resuming: null,
     etag: null,
     manifest: { version: 1, games: [] },
   }
@@ -121,6 +129,7 @@ export function useCloudLibrary() {
 
   async function activate(kRoot: Uint8Array): Promise<LibraryKeys> {
     const keys = await deriveLibraryKeys(kRoot)
+    s.generation++
     s.keys = keys
     s.api = apiFactory({ libraryId: keys.libraryId, kAuth: keys.kAuth })
     return keys
@@ -133,6 +142,7 @@ export function useCloudLibrary() {
   }
 
   function reset() {
+    s.generation++
     s.keys = null
     s.api = null
     s.etag = null
@@ -145,7 +155,7 @@ export function useCloudLibrary() {
 
   async function rootFromSecret(secret: string): Promise<Uint8Array> {
     const parsed = parseSecret(secret)
-    return parsed.kind === 'recovery' ? parsed.kRoot : deriveRootKey(parsed.password)
+    return parsed.kind === 'recovery' ? parsed.kRoot : deriveRootKey(parsed.password.trim())
   }
 
   async function openWithRoot(kRoot: Uint8Array): Promise<boolean> {
@@ -232,14 +242,14 @@ export function useCloudLibrary() {
     }
   }
 
-  const pendingKey = () => `cloudPending.${s.libraryId.value}`
+  const pendingKey = (libraryId: string) => `cloudPending.${libraryId}`
 
-  async function getPending(): Promise<PendingUpload[]> {
-    return ((await getSetting<PendingUpload[]>(pendingKey())) ?? []).map((p) => ({ ...p }))
+  async function getPendingFor(libraryId: string): Promise<PendingUpload[]> {
+    return ((await getSetting<PendingUpload[]>(pendingKey(libraryId))) ?? []).map((p) => ({ ...p }))
   }
 
-  async function savePending(list: PendingUpload[]) {
-    await setSetting(pendingKey(), structuredClone(list))
+  async function savePendingFor(list: PendingUpload[], libraryId: string) {
+    await setSetting(pendingKey(libraryId), structuredClone(list))
   }
 
   /** True when a game with the same title and size is already in the online library. */
@@ -248,12 +258,12 @@ export function useCloudLibrary() {
   }
 
   /** Uploads one object, resuming from saved state for the same object key when present. */
-  async function uploadOne(api: CloudApi, blob: File, kGame: Uint8Array, objectKey: string, onBytes: (n: number) => void) {
-    const libraryId = s.libraryId.value!
+  async function uploadOne(api: CloudApi, libraryId: string, blob: File, kGame: Uint8Array, objectKey: string, onBytes: (n: number) => void, isCancelled: () => boolean) {
     const resume = (await getUploadStates(libraryId)).find((st) => st.objectKey === objectKey)
     return uploadObject(api, blob, kGame, objectKey, {
       libraryId,
       resume,
+      isCancelled,
       onProgress: (n) => onBytes(n),
       saveState: (st) => putUploadState(st),
       clearState: (id) => deleteUploadState(id),
@@ -261,7 +271,14 @@ export function useCloudLibrary() {
   }
 
   async function uploadGame(local: LocalGame): Promise<void> {
+    if (s.inFlight.has(local.id)) return
     const { api } = requireOpen()
+    const gen = s.generation
+    const libraryId = s.libraryId.value!
+    const alive = () => s.generation === gen
+    const getPending = (id = libraryId) => getPendingFor(id)
+    const savePending = (list: PendingUpload[]) => savePendingFor(list, libraryId)
+    s.inFlight.add(local.id)
     s.notice.value = null
     let pending = (await getPending()).find((p) => p.localGameId === local.id)
     const list = await getPending()
@@ -295,9 +312,9 @@ export function useCloudLibrary() {
         if (!pending.done.includes(key)) {
           const blob = await getBlob(ref.blobKey)
           if (!blob) throw new Error(`Missing stored file: ${ref.name}`)
-          await uploadOne(api, new File([blob], ref.name, { lastModified: local.createdAt }), kGame, key, (n) => {
-            s.uploadProgress.value = { gameId: local.id, title: local.title, done: finished + n, total }
-          })
+          await uploadOne(api, libraryId, new File([blob], ref.name, { lastModified: local.createdAt }), kGame, key, (n) => {
+            if (alive()) s.uploadProgress.value = { gameId: local.id, title: local.title, done: finished + n, total }
+          }, () => !alive())
           await markDone(key)
         }
         finished += ref.size
@@ -307,11 +324,12 @@ export function useCloudLibrary() {
       if (pending.coverKey && local.coverBlobKey) {
         const cover = await getBlob(local.coverBlobKey)
         if (cover && !pending.done.includes(pending.coverKey)) {
-          await uploadOne(api, new File([cover], 'cover', { lastModified: local.createdAt }), kGame, pending.coverKey, () => {})
+          await uploadOne(api, libraryId, new File([cover], 'cover', { lastModified: local.createdAt }), kGame, pending.coverKey, () => {}, () => !alive())
           await markDone(pending.coverKey)
         }
         coverSize = cover?.size
       }
+      if (!alive()) throw new UploadCancelledError()
       await saveManifest((m) => {
         m.games.push({
           id: crypto.randomUUID(),
@@ -330,10 +348,12 @@ export function useCloudLibrary() {
       })
       await savePending((await getPending()).filter((p) => p.localGameId !== local.id))
     } catch (err) {
-      if (err instanceof ApiError && err.status === 413) {
+      if (err instanceof UploadCancelledError || !alive()) {
+        // Library closed or switched: keep the pending state for the next time it is opened.
+      } else if (err instanceof ApiError && err.status === 413) {
         // Roll back: remove what this game already stored, forget the pending entry.
         for (const key of pending.done) await api.deleteObject(key).catch(() => undefined)
-        for (const st of await getUploadStates(s.libraryId.value!)) {
+        for (const st of await getUploadStates(libraryId)) {
           if ([...pending.fileKeys, pending.coverKey].includes(st.objectKey)) {
             await api.abortUpload(st.objectKey, st.uploadId).catch(() => undefined)
             await deleteUploadState(st.id)
@@ -348,29 +368,55 @@ export function useCloudLibrary() {
         s.notice.value = { kind: 'error', key: 'cloud.uploadFailed' }
       }
     } finally {
-      s.uploadProgress.value = null
-      await refreshUsage()
+      s.inFlight.delete(local.id)
+      if (alive()) {
+        s.uploadProgress.value = null
+        await refreshUsage()
+      }
     }
   }
 
   /** Continues uploads that were interrupted (tab closed, network lost) using the local copies. */
-  async function resumeUploads(): Promise<void> {
-    for (const p of await getPending()) {
-      const local = await getGame(p.localGameId)
-      if (local) await uploadGame(local)
-      else await savePending((await getPending()).filter((x) => x.localGameId !== p.localGameId))
-    }
+  function resumeUploads(): Promise<void> {
+    if (s.resuming) return s.resuming
+    const libraryId = s.libraryId.value
+    if (!libraryId) return Promise.resolve()
+    s.resuming = (async () => {
+      for (const p of await getPendingFor(libraryId)) {
+        if (s.libraryId.value !== libraryId) return
+        const local = await getGame(p.localGameId)
+        if (local) await uploadGame(local)
+        else await savePendingFor((await getPendingFor(libraryId)).filter((x) => x.localGameId !== p.localGameId), libraryId)
+      }
+    })().finally(() => {
+      s.resuming = null
+    })
+    return s.resuming
+  }
+
+  function noticeFor(err: unknown): LibraryNotice {
+    if (err instanceof DecryptError) return { kind: 'error', key: 'cloud.corrupt' }
+    if (err instanceof StorageError) return { kind: 'error', key: err.code === 'quota' ? 'errors.quota' : 'errors.unavailable' }
+    if (err instanceof ApiError && err.status === 404) return { kind: 'error', key: 'cloud.missingObject' }
+    return { kind: 'error', key: 'cloud.network' }
   }
 
   async function deleteGame(id: string): Promise<void> {
     const { api } = requireOpen()
     const game = s.games.value.find((g) => g.id === id)
     if (!game) return
+    s.notice.value = null
+    try {
+      // Manifest first: an orphaned object is better than a manifest entry pointing at nothing.
+      await saveManifest((m) => {
+        m.games = m.games.filter((g) => g.id !== id)
+      })
+    } catch (err) {
+      s.notice.value = noticeFor(err)
+      return
+    }
     for (const f of game.files) await api.deleteObject(f.objectKey).catch(() => undefined)
     if (game.coverObjectKey) await api.deleteObject(game.coverObjectKey).catch(() => undefined)
-    await saveManifest((m) => {
-      m.games = m.games.filter((g) => g.id !== id)
-    })
     await refreshUsage()
   }
 
@@ -407,9 +453,10 @@ export function useCloudLibrary() {
   }
 
   /** Copies a cloud game into this browser's local library so it plays offline. */
-  async function downloadToLocal(id: string): Promise<LocalGame> {
+  async function downloadToLocal(id: string): Promise<LocalGame | null> {
     const game = s.games.value.find((g) => g.id === id)
-    if (!game) throw new Error('Game not found')
+    if (!game) return null
+    s.notice.value = null
     s.downloadProgress.value = { gameId: id, title: game.title, done: 0, total: game.sizeBytes }
     try {
       const files = await downloadGameFiles(game, (done, total) => {
@@ -422,6 +469,9 @@ export function useCloudLibrary() {
         return (await getGame(added.id)) ?? added
       }
       return added
+    } catch (err) {
+      s.notice.value = noticeFor(err)
+      return null
     } finally {
       s.downloadProgress.value = null
     }
@@ -430,10 +480,14 @@ export function useCloudLibrary() {
   async function renameGame(id: string, title: string): Promise<void> {
     const trimmed = title.trim()
     if (!trimmed) return
-    await saveManifest((m) => {
-      const g = m.games.find((x) => x.id === id)
-      if (g) g.title = trimmed
-    })
+    try {
+      await saveManifest((m) => {
+        const g = m.games.find((x) => x.id === id)
+        if (g) g.title = trimmed
+      })
+    } catch (err) {
+      s.notice.value = noticeFor(err)
+    }
   }
 
   return {

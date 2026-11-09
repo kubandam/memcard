@@ -56,6 +56,34 @@ describe('uploadObject / downloadObject', () => {
     await expect(uploadObject(api, original, kGame, newObjectKey(), { ...noState, resume: state })).rejects.toBeInstanceOf(ResumeMismatchError)
   })
 
+  it('resume whose multipart upload the server forgot restarts and yields the same ciphertext', async () => {
+    const plain = blobOf(20 * MiB)
+    const file = () => new File([plain], 'r.bin', { lastModified: 3 })
+    const kGame = newGameKey(); const key = newObjectKey()
+    const fresh = createFakeCloudApi()
+    await uploadObject(fresh.api, file(), kGame, key, noState)
+    const { api, objects } = createFakeCloudApi()
+    const stale: UploadState = { id: 's', libraryId: 'lib', objectKey: key, uploadId: 'gone', parts: [{ partNumber: 1, etag: 'p1' }], fileName: 'r.bin', fileSize: plain.length, fileLastModified: 3 }
+    const res = await uploadObject(api, file(), kGame, key, { ...noState, resume: stale })
+    expect(res.size).toBe(plain.length)
+    expect(await sha(objects.get(key)!)).toBe(await sha(fresh.objects.get(key)!))
+  })
+
+  it('resume after a completed upload whose response was lost treats the object as done', async () => {
+    const plain = blobOf(5 * MiB)
+    const file = () => new File([plain], 'd.bin', { lastModified: 4 })
+    const kGame = newGameKey(); const key = newObjectKey()
+    const { api, calls } = createFakeCloudApi()
+    await uploadObject(api, file(), kGame, key, noState)
+    const done: UploadState = { id: 's', libraryId: 'lib', objectKey: key, uploadId: 'u1', parts: [{ partNumber: 1, etag: 'p1' }], fileName: 'd.bin', fileSize: plain.length, fileLastModified: 4 }
+    calls.uploadPart.length = 0
+    const cleared: string[] = []
+    const res = await uploadObject(api, file(), kGame, key, { ...noState, resume: done, clearState: async (id) => void cleared.push(id) })
+    expect(res).toEqual({ objectKey: key, chunks: 2, size: plain.length })
+    expect(calls.uploadPart).toEqual([])
+    expect(cleared).toEqual(['s'])
+  })
+
   it('part size is 4 chunks', () => {
     expect(PART_SIZE).toBe(16 * MiB)
   })

@@ -55,5 +55,3 @@ export function hardLimit(env: { TOTAL_BYTES_LIMIT?: string }): number {
   return Number.isFinite(n) && n > 0 ? n : DEFAULT_HARD_LIMIT
 }
 
-export const manifestKey = (libraryId: string) => `lib/${libraryId}/manifest`
-export const objectPath = (libraryId: string, key: string) => `lib/${libraryId}/obj/${key}`

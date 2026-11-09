@@ -10,7 +10,8 @@ export interface LibraryRow {
 export interface LibraryStore {
   createLibrary(id: string, authVerifier: string): Promise<'created' | 'exists'>
   getLibrary(id: string): Promise<LibraryRow | null>
-  setManifestEtag(id: string, etag: string): Promise<void>
+  /** Atomically moves the manifest pointer from `expected` (null = none yet) to `next`; false if it moved meanwhile. */
+  swapManifest(id: string, expected: string | null, next: string): Promise<boolean>
   totalBytes(): Promise<number>
   addObject(libraryId: string, key: string, size: number): Promise<void>
   removeObject(libraryId: string, key: string): Promise<number>
@@ -35,9 +36,11 @@ export function createMemoryStore(): LibraryStore {
       const row = libs.get(id)
       return row ? { ...row } : null
     },
-    async setManifestEtag(id, etag) {
+    async swapManifest(id, expected, next) {
       const row = libs.get(id)
-      if (row) row.manifestEtag = etag
+      if (!row || row.manifestEtag !== expected) return false
+      row.manifestEtag = next
+      return true
     },
     async totalBytes() {
       let n = 0
@@ -93,8 +96,12 @@ export function createD1Store(db: D1Database): LibraryStore {
         .first<{ id: string; auth_verifier: string; manifest_etag: string | null; bytes_used: number }>()
       return r ? { id: r.id, authVerifier: r.auth_verifier, manifestEtag: r.manifest_etag, bytesUsed: r.bytes_used } : null
     },
-    async setManifestEtag(id, etag) {
-      await db.prepare('UPDATE libraries SET manifest_etag = ?2, updated_at = ?3 WHERE id = ?1').bind(id, etag, now()).run()
+    async swapManifest(id, expected, next) {
+      const res = await db
+        .prepare('UPDATE libraries SET manifest_etag = ?3, updated_at = ?4 WHERE id = ?1 AND manifest_etag IS ?2')
+        .bind(id, expected, next, now())
+        .run()
+      return res.meta.changes === 1
     },
     async totalBytes() {
       const r = await db.prepare('SELECT COALESCE(SUM(bytes_used), 0) AS n FROM libraries').first<{ n: number }>()

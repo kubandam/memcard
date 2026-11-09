@@ -23,11 +23,12 @@ export function createFakeCloudApi(opts: { quotaBytes?: number } = {}) {
       return manifest.etag
     },
     async createUpload(key) { const id = `u${uploads.size + 1}`; uploads.set(id, { key, parts: new Map() }); return id },
-    async uploadPart(_key, uploadId, part, body) { calls.uploadPart.push(part); uploads.get(uploadId)!.parts.set(part, body.slice()); return `p${part}` },
+    async uploadPart(_key, uploadId, part, body) { calls.uploadPart.push(part); const up = uploads.get(uploadId); if (!up) throw new ApiError(404); up.parts.set(part, body.slice()); return `p${part}` },
     async completeUpload(key, uploadId, parts, size) {
       calls.completes++
       if (opts.quotaBytes !== undefined && used + size > opts.quotaBytes) { uploads.delete(uploadId); throw new ApiError(413, 'quota') }
-      const up = uploads.get(uploadId)!
+      const up = uploads.get(uploadId)
+      if (!up) throw new ApiError(404)
       objects.set(key, concatBytes(...parts.map((p) => up.parts.get(p.partNumber)!)))
       used += size
       uploads.delete(uploadId)
@@ -36,6 +37,7 @@ export function createFakeCloudApi(opts: { quotaBytes?: number } = {}) {
     async getRange(key, start, end) {
       const o = objects.get(key)
       if (!o) throw new ApiError(404)
+      if (start > end || start >= o.length) throw new ApiError(416)
       return o.slice(start, end + 1)
     },
     async deleteObject(key) { const o = objects.get(key); if (o) used -= o.length; objects.delete(key) },

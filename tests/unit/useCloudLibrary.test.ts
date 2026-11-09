@@ -5,6 +5,7 @@ import { ApiError } from '../../app/utils/cloudApi'
 import { __resetCloudForTests, __setCloudApiFactory, useCloudLibrary, SESSION_KEY } from '../../app/composables/useCloudLibrary'
 import { __resetDbForTests } from '../../app/utils/localDb'
 import { authVerifierHex, deriveLibraryKeys, deriveRootKey } from '../../shared/utils/libraryKeys'
+import { encryptJson } from '../../shared/utils/chunkCrypto'
 import { createFakeCloudApi } from './fakeCloudApi'
 
 const PASS = 'otter-pencil-river-mango-tulip'
@@ -78,12 +79,23 @@ describe('useCloudLibrary', () => {
     expect(again.status.value).toBe('open')
   }, 30_000)
 
-  it('saveManifest retries once after a 412 without losing changes', async () => {
+  it('saveManifest retries once after a 412 and keeps the other writer\'s change', async () => {
     const lib = useCloudLibrary()
     await lib.create(PASS, 'good')
-    fake.failManifestOnce()
+    const { kLib } = await deriveLibraryKeys(await deriveRootKey(PASS))
+    const other = { id: 'other', title: 'Other tab', kind: 'single', primaryName: 'o.chd', files: [], sizeBytes: 1, createdAt: 1, lastPlayedAt: null, kGame: 'y' }
+    // Another tab saves a game between our read and our write.
+    const current = (await fake.api.getManifest())!
+    await fake.api.putManifest(await encryptJson(kLib, { version: 1, games: [other] }), current.etag)
     await lib.saveManifest((m) => { m.games.push({ id: 'g', title: 'T', kind: 'single', primaryName: 't.chd', files: [], sizeBytes: 1, createdAt: 1, lastPlayedAt: null, kGame: 'x' }) })
-    expect(lib.games.value.map((g) => g.id)).toEqual(['g'])
+    expect(lib.games.value.map((g) => g.id).sort()).toEqual(['g', 'other'])
+  }, 30_000)
+
+  it('trims the passphrase so a pasted trailing space still opens the library', async () => {
+    const lib = useCloudLibrary()
+    await lib.create(PASS, 'good')
+    lib.close()
+    expect(await lib.open(`  ${PASS} \n`)).toBe(true)
   }, 30_000)
 })
 
@@ -160,6 +172,43 @@ describe('useCloudLibrary — uploads', () => {
     expect(f.calls.uploadPart).toEqual([2, 3])
     expect(again.games.value.map((x) => x.title)).toEqual(['Resume Me'])
     expect(await getSetting(`cloudPending.${again.libraryId.value}`)).toEqual([])
+  }, 60_000)
+
+  it('closing the library cancels a running upload; nothing lands in another library', async () => {
+    const f = createFakeCloudApi()
+    const lib = await openWith(f)
+    const g = await localGame([['big.chd', 40 * MiB]], 'Cancel Me')
+    const realPart = f.api.uploadPart
+    f.api.uploadPart = async (...a) => { const r = await realPart(...a); if (a[2] === 1) lib.close(); return r }
+    await lib.uploadGame(g)
+    expect(f.calls.uploadPart).toEqual([1])
+    const g2 = createFakeCloudApi()
+    __setCloudApiFactory(() => g2.api)
+    await lib.create('a-completely-different-passphrase', 'good')
+    expect(lib.games.value).toEqual([])
+    expect(lib.notice.value).toBeNull()
+  }, 60_000)
+
+  it('resumeUploads does not run twice at the same time', async () => {
+    const f = createFakeCloudApi()
+    const lib = await openWith(f)
+    const g = await localGame([['two.chd', 20 * MiB]], 'Twice')
+    let n = 0
+    const realPart = f.api.uploadPart
+    f.api.uploadPart = async (...a) => { if (++n === 1) throw new Error('network'); return realPart(...a) }
+    await lib.uploadGame(g)
+    await Promise.all([lib.resumeUploads(), lib.resumeUploads(), lib.uploadGame(g)])
+    expect(lib.games.value.map((x) => x.title)).toEqual(['Twice'])
+  }, 60_000)
+
+  it('a damaged online copy shows a notice instead of failing silently on download', async () => {
+    const f = createFakeCloudApi()
+    const lib = await openWith(f)
+    await lib.uploadGame(await localGame([['bad.chd', 2000]], 'Bad'))
+    const key = lib.games.value[0]!.files[0]!.objectKey
+    const o = f.objects.get(key)!; o[5]! ^= 1
+    expect(await lib.downloadToLocal(lib.games.value[0]!.id)).toBeNull()
+    expect(lib.notice.value?.key).toBe('cloud.corrupt')
   }, 60_000)
 
   it('deleteGame removes objects and the manifest entry', async () => {

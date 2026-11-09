@@ -24,8 +24,11 @@ describe('memory library store (contract shared with D1)', () => {
   it('manifest etag and uploads', async () => {
     const s = createMemoryStore()
     await s.createLibrary('a', 'v')
-    await s.setManifestEtag('a', 'e1')
-    expect((await s.getLibrary('a'))?.manifestEtag).toBe('e1')
+    expect(await s.swapManifest('a', 'nope', 'e1')).toBe(false)
+    expect(await s.swapManifest('a', null, 'e1')).toBe(true)
+    expect(await s.swapManifest('a', null, 'e2')).toBe(false)
+    expect(await s.swapManifest('a', 'e1', 'e2')).toBe(true)
+    expect((await s.getLibrary('a'))?.manifestEtag).toBe('e2')
     await s.putUpload('u', 'a', 'k', 'up-1')
     expect(await s.getUpload('u')).toEqual({ libraryId: 'a', key: 'k', uploadId: 'up-1' })
     await s.deleteUpload('u')

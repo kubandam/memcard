@@ -1,0 +1,142 @@
+/// <reference types="@cloudflare/workers-types" />
+import type { LibraryStore } from './libraryStore'
+
+/** Plain error the routes translate into an HTTP status (keeps this module free of h3). */
+export class ServiceError extends Error {
+  constructor(
+    public status: number,
+    public code?: string,
+  ) {
+    super(code ?? `status ${status}`)
+  }
+}
+
+/** Largest encrypted part we accept: 16 MiB of plaintext (4 chunks) plus GCM tags, with headroom. */
+export const MAX_PART_BYTES = 17 * 1024 * 1024
+const PLAIN_PART = 16 * 1024 * 1024
+
+const manifestPath = (libraryId: string, version: string) => `lib/${libraryId}/manifest/${version}`
+export const objectPath = (libraryId: string, key: string) => `lib/${libraryId}/obj/${key}`
+
+export interface LibraryService {
+  getManifest(libraryId: string): Promise<{ bytes: Uint8Array; etag: string } | null>
+  putManifest(libraryId: string, ifMatch: string | null, body: Uint8Array): Promise<string>
+  createUpload(libraryId: string, key: string): Promise<{ uploadId: string }>
+  uploadPart(libraryId: string, key: string, uploadId: string, part: number, body: Uint8Array): Promise<{ etag: string }>
+  completeUpload(libraryId: string, key: string, uploadId: string, parts: { partNumber: number; etag: string }[]): Promise<{ size: number }>
+  abortUpload(libraryId: string, key: string, uploadId: string): Promise<void>
+  getObject(libraryId: string, key: string, range: { start: number; end: number } | null): Promise<{ body: ReadableStream | Uint8Array; size: number; contentRange?: string; length: number }>
+  objectSize(libraryId: string, key: string): Promise<number | null>
+  deleteObject(libraryId: string, key: string): Promise<void>
+}
+
+export function createLibraryService(deps: { store: LibraryStore; r2: R2Bucket; hardLimit: number }): LibraryService {
+  const { store, r2, hardLimit } = deps
+
+  async function requireUpload(libraryId: string, key: string, uploadId: string) {
+    const up = await store.getUpload(uploadId)
+    if (!up || up.libraryId !== libraryId || up.key !== key) throw new ServiceError(404)
+    return up
+  }
+
+  return {
+    async getManifest(libraryId) {
+      const row = await store.getLibrary(libraryId)
+      if (!row?.manifestEtag) return null
+      const obj = await r2.get(manifestPath(libraryId, row.manifestEtag))
+      if (!obj) throw new ServiceError(500, 'manifest-missing')
+      return { bytes: new Uint8Array(await obj.arrayBuffer()), etag: row.manifestEtag }
+    },
+
+    /**
+     * Writes a new manifest version, then moves the D1 pointer with a compare-and-swap. The pointer
+     * is the single source of truth, so concurrent writers cannot both win and cannot wedge it.
+     */
+    async putManifest(libraryId, ifMatch, body) {
+      const row = await store.getLibrary(libraryId)
+      if (!row) throw new ServiceError(404)
+      if ((row.manifestEtag ?? null) !== (ifMatch ?? null)) throw new ServiceError(412)
+      const version = crypto.randomUUID()
+      await r2.put(manifestPath(libraryId, version), body)
+      if (!(await store.swapManifest(libraryId, ifMatch ?? null, version))) {
+        await r2.delete(manifestPath(libraryId, version))
+        throw new ServiceError(412)
+      }
+      if (ifMatch) await r2.delete(manifestPath(libraryId, ifMatch)).catch(() => undefined)
+      return version
+    },
+
+    async createUpload(libraryId, key) {
+      const mpu = await r2.createMultipartUpload(objectPath(libraryId, key))
+      await store.putUpload(mpu.uploadId, libraryId, key, mpu.uploadId)
+      return { uploadId: mpu.uploadId }
+    },
+
+    async uploadPart(libraryId, key, uploadId, part, body) {
+      if (!Number.isInteger(part) || part < 1 || part > 10_000) throw new ServiceError(404)
+      if ((part - 1) * PLAIN_PART >= hardLimit) throw new ServiceError(413, 'quota')
+      if (body.length === 0 || body.length > MAX_PART_BYTES) throw new ServiceError(400)
+      await requireUpload(libraryId, key, uploadId)
+      try {
+        const uploaded = await r2.resumeMultipartUpload(objectPath(libraryId, key), uploadId).uploadPart(part, body)
+        return { etag: uploaded.etag }
+      } catch {
+        // R2 forgot the upload (aborted or expired): tell the client to start over.
+        await store.deleteUpload(uploadId)
+        throw new ServiceError(404)
+      }
+    },
+
+    async completeUpload(libraryId, key, uploadId, parts) {
+      if (!parts.length || parts.length > 10_000) throw new ServiceError(400)
+      await requireUpload(libraryId, key, uploadId)
+      let size: number
+      try {
+        size = (await r2.resumeMultipartUpload(objectPath(libraryId, key), uploadId).complete(parts)).size
+      } catch {
+        await store.deleteUpload(uploadId)
+        throw new ServiceError(404)
+      }
+      await store.deleteUpload(uploadId)
+      await store.addObject(libraryId, key, size)
+      // Enforce the quota on what was actually stored, never on a size the client claims.
+      if ((await store.totalBytes()) > hardLimit) {
+        await r2.delete(objectPath(libraryId, key))
+        await store.removeObject(libraryId, key)
+        throw new ServiceError(413, 'quota')
+      }
+      return { size }
+    },
+
+    async abortUpload(libraryId, key, uploadId) {
+      await requireUpload(libraryId, key, uploadId)
+      await r2.resumeMultipartUpload(objectPath(libraryId, key), uploadId).abort().catch(() => undefined)
+      await store.deleteUpload(uploadId)
+    },
+
+    async getObject(libraryId, key, range) {
+      const head = await r2.head(objectPath(libraryId, key))
+      if (!head) throw new ServiceError(404)
+      if (range && (range.start > range.end || range.start >= head.size)) throw new ServiceError(416)
+      if (!range) {
+        const obj = await r2.get(objectPath(libraryId, key))
+        if (!obj) throw new ServiceError(404)
+        return { body: (obj as R2ObjectBody).body, size: head.size, length: head.size }
+      }
+      const end = Math.min(range.end, head.size - 1)
+      const obj = await r2.get(objectPath(libraryId, key), { range: { offset: range.start, length: end - range.start + 1 } })
+      if (!obj) throw new ServiceError(404)
+      return { body: (obj as R2ObjectBody).body, size: head.size, length: end - range.start + 1, contentRange: `bytes ${range.start}-${end}/${head.size}` }
+    },
+
+    async objectSize(libraryId, key) {
+      const head = await r2.head(objectPath(libraryId, key))
+      return head ? head.size : null
+    },
+
+    async deleteObject(libraryId, key) {
+      await r2.delete(objectPath(libraryId, key))
+      await store.removeObject(libraryId, key)
+    },
+  }
+}
