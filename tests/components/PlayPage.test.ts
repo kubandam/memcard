@@ -35,6 +35,7 @@ mockNuxtImport('useCloudLibrary', () => () => cloudMock)
 const sharedMock = vi.hoisted(() => ({
   libraries: { value: [] as unknown[] },
   restore: async () => {},
+  restoreOne: async () => {},
   revoked: false,
   async downloadGameFiles(_s: string, g: { primaryName: string }) {
     if (sharedMock.revoked) {

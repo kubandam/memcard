@@ -10,7 +10,7 @@ const game = { id: 'g1', title: 'Spyro', kind: 'single', primaryName: 's.chd', f
 
 describe('SharedLibrary', () => {
   it('lists games with shared play links and a download action', async () => {
-    Object.assign(shared, { progress: ref(null), downloadToLocal: vi.fn(async () => null), remove: vi.fn() })
+    Object.assign(shared, { progress: ref(null), downloadToLocal: vi.fn(async () => null), remove: vi.fn(), coverUrl: vi.fn(async () => undefined) })
     const w = await mountSuspended(SharedLibrary, { props: { library: { shareId: 'sid', code: 'MC-X', libraryId: 'lib', games: [game], status: 'ok' } } })
     expect(w.text()).toContain('Spyro')
     expect(w.find('a[href="/play/shared/g1?share=sid"]').exists()).toBe(true)
@@ -18,7 +18,7 @@ describe('SharedLibrary', () => {
   })
 
   it('revoked: shows the notice, no play links, Remove forgets it', async () => {
-    Object.assign(shared, { progress: ref(null), downloadToLocal: vi.fn(), remove: vi.fn(async () => {}) })
+    Object.assign(shared, { progress: ref(null), downloadToLocal: vi.fn(), remove: vi.fn(async () => {}), coverUrl: vi.fn(async () => undefined) })
     const w = await mountSuspended(SharedLibrary, { props: { library: { shareId: 'sid', code: 'MC-X', libraryId: 'lib', games: [], status: 'revoked' } } })
     expect(w.text()).toMatch(/no longer valid/i)
     expect(w.find('a[href^="/play/shared/"]').exists()).toBe(false)

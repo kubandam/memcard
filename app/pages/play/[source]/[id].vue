@@ -100,7 +100,7 @@ async function loadCloud(gameId: string) {
 
 async function loadShared(gameId: string, shareId: string) {
   const shared = useSharedLibraries()
-  await shared.restore()
+  await shared.restoreOne(shareId)
   const lib = shared.libraries.value.find((l) => l.shareId === shareId)
   if (!lib) return void (notFound.value = true)
   if (lib.status === 'revoked') throw new ShareRevokedError()

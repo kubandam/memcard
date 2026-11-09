@@ -143,9 +143,41 @@ export function useSharedLibraries() {
     return { kind: 'library', libraryId: info.libraryId, shareId }
   }
 
+  /** Replaces or adds loaded entries without dropping ones that appeared meanwhile (e.g. a fresh redeem). */
+  function merge(loaded: SharedLibrary[]) {
+    const byId = new Map(s.libraries.value.map((l) => [l.shareId, l]))
+    for (const l of loaded) byId.set(l.shareId, l)
+    s.libraries.value = [...byId.values()]
+  }
+
   async function restore(): Promise<void> {
     const saved = await readSaved()
-    s.libraries.value = await Promise.all(saved.map(loadLibrary))
+    merge(await Promise.all(saved.map(loadLibrary)))
+  }
+
+  /** Loads just one saved library (the player only needs the one in ?share). */
+  async function restoreOne(shareId: string): Promise<void> {
+    const saved = (await readSaved()).find((x) => x.shareId === shareId)
+    if (saved) merge([await loadLibrary(saved)])
+  }
+
+  const covers = new Map<string, string>()
+
+  /** Decrypts a shared game's cover into an object URL; undefined when there is none or it fails. */
+  async function coverUrl(shareId: string, game: CloudGame): Promise<string | undefined> {
+    if (!game.coverObjectKey || !game.coverSize) return undefined
+    const cacheKey = `${shareId}:${game.coverObjectKey}`
+    const hit = covers.get(cacheKey)
+    if (hit) return hit
+    try {
+      const reader = transport.reader(shareId, libraryIdFor(shareId))
+      const bytes = await downloadObject(reader, { name: 'cover', size: game.coverSize, objectKey: game.coverObjectKey, chunks: Math.ceil(game.coverSize / (4 * 1024 * 1024)) }, fromBase64Url(game.kGame))
+      const url = URL.createObjectURL(new Blob([bytes as BlobPart]))
+      covers.set(cacheKey, url)
+      return url
+    } catch {
+      return undefined
+    }
   }
 
   async function remove(shareId: string): Promise<void> {
@@ -221,5 +253,5 @@ export function useSharedLibraries() {
     }
   }
 
-  return { libraries: s.libraries, progress: s.progress, redeem, restore, remove, downloadGameFiles, downloadToLocal }
+  return { libraries: s.libraries, progress: s.progress, redeem, restore, restoreOne, remove, coverUrl, downloadGameFiles, downloadToLocal }
 }

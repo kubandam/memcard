@@ -171,3 +171,51 @@ describe('privacy of shared payloads', () => {
     expect(p.kind === 'game' && p.game.lastPlayedAt).toBeNull()
   }, 60_000)
 })
+
+describe('shared covers and restore races', () => {
+  beforeEach(() => {
+    globalThis.indexedDB = new IDBFactory()
+    __resetDbForTests(); __resetCloudForTests(); __resetSharedForTests(); sessionStorageShim()
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: () => 'blob:cover', revokeObjectURL: () => {} }))
+  })
+
+  it('coverUrl decrypts the owner cover through the share; failures give undefined', async () => {
+    const { owner } = await ownerWithGame('With Cover', true)
+    const code = await owner.shareLibrary()
+    const shared = useSharedLibraries()
+    await shared.redeem(code)
+    const lib = shared.libraries.value[0]!
+    expect(await shared.coverUrl(lib.shareId, lib.games[0]!)).toBe('blob:cover')
+    expect(await shared.coverUrl('nope', lib.games[0]!)).toBeUndefined()
+  }, 60_000)
+
+  it('a library redeemed while restore() runs is kept', async () => {
+    const { owner } = await ownerWithGame('Race')
+    const first = await owner.shareLibrary()
+    const second = await owner.shareLibrary()
+    const shared = useSharedLibraries()
+    await shared.redeem(first)
+    __resetSharedForTests()
+    const fresh = useSharedLibraries()
+    const restoring = fresh.restore()
+    await fresh.redeem(second)
+    await restoring
+    expect(fresh.libraries.value).toHaveLength(2)
+  }, 60_000)
+
+  it('restoreOne loads only the requested library', async () => {
+    const { f, owner } = await ownerWithGame('One')
+    const a = await owner.shareLibrary()
+    const b = await owner.shareLibrary()
+    const shared = useSharedLibraries()
+    await shared.redeem(a); await shared.redeem(b)
+    __resetSharedForTests()
+    const lookups: string[] = []
+    __setShareTransport({ lookup: async (id) => (lookups.push(id), f.shareTransport.lookup(id)), reader: f.shareTransport.reader })
+    const fresh = useSharedLibraries()
+    const target = (await deriveShareKeys(parseShareCode(b)!)).shareId
+    await fresh.restoreOne(target)
+    expect(lookups).toEqual([target])
+    expect(fresh.libraries.value.map((l) => l.shareId)).toEqual([target])
+  }, 60_000)
+})

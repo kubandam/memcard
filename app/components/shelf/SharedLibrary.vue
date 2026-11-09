@@ -1,12 +1,25 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import type { SharedLibrary } from '~/composables/useSharedLibraries'
 
 const props = defineProps<{ library: SharedLibrary }>()
 const emit = defineEmits<{ downloaded: [] }>()
 const { t } = useI18n()
-const { progress, downloadToLocal, remove } = useSharedLibraries()
+const { progress, downloadToLocal, remove, coverUrl } = useSharedLibraries()
 const error = ref<string | null>(null)
+const covers = ref<Record<string, string>>({})
+
+async function loadCovers() {
+  if (props.library.status !== 'ok') return
+  for (const g of props.library.games) {
+    if (covers.value[g.id]) continue
+    const url = await coverUrl(props.library.shareId, g)
+    if (url) covers.value = { ...covers.value, [g.id]: url }
+  }
+}
+
+onMounted(loadCovers)
+watch(() => props.library.games, loadCovers)
 
 async function download(gameId: string) {
   const game = props.library.games.find((g) => g.id === gameId)
@@ -36,7 +49,7 @@ async function download(gameId: string) {
     <Notice v-if="error" kind="error">{{ t(error) }}</Notice>
 
     <GameGrid v-if="library.status === 'ok' && library.games.length">
-      <GameTile v-for="game in library.games" :key="game.id" :game="game" :href="`/play/shared/${game.id}?share=${library.shareId}`">
+      <GameTile v-for="game in library.games" :key="game.id" :game="game" :href="`/play/shared/${game.id}?share=${library.shareId}`" :cover-url="covers[game.id]">
         <template #actions>
           <button type="button" data-download class="link-button label" :disabled="!!progress" @click="download(game.id)">
             {{ progress?.key === `${library.shareId}:${game.id}` ? `${Math.round((progress.done / Math.max(1, progress.total)) * 100)} %` : t('cloud.download') }}
