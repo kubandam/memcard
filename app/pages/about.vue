@@ -27,6 +27,11 @@ useHead({ title: t('about.title') })
       <li>{{ t('about.licence3') }}</li>
     </ul>
 
+    <SectionLabel>{{ t('about.chdTitle') }}</SectionLabel>
+    <p>{{ t('about.chdIntro') }}</p>
+    <pre class="about__code"><code>chdman createcd -i "Game.cue" -o "Game.chd"</code></pre>
+    <p>{{ t('about.chdMulti') }}</p>
+
     <SectionLabel>{{ t('about.sourceTitle') }}</SectionLabel>
     <p><a :href="sourceUrl" rel="noopener">{{ sourceUrl }}</a></p>
   </article>
@@ -44,6 +49,15 @@ useHead({ title: t('about.title') })
 
 .about__list {
   padding-left: 20px;
+}
+
+.about__code {
+  background: var(--bg-panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  overflow-x: auto;
+  font-size: 13px;
 }
 
 .about__list li + li {

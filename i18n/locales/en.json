@@ -30,7 +30,10 @@
     "licence1": "This website is free software under the GNU GPL-3.0.",
     "licence2": "Emulation by EmulatorJS (GPL-3.0) running the libretro pcsx_rearmed core (GPL-2.0).",
     "licence3": "Fonts: Archivo Narrow, Inter and Chakra Petch under the SIL Open Font License 1.1.",
-    "sourceTitle": "Source code"
+    "sourceTitle": "Source code",
+    "chdTitle": "Make games smaller (CHD)",
+    "chdIntro": "CHD is a lossless compressed disc format. A .bin/.cue or .iso usually shrinks 2–3× and plays exactly the same. Install MAME's chdman tool, then run:",
+    "chdMulti": "For a multi-disc game convert each disc, then add all the .chd files together (or with an .m3u playlist)."
   },
   "home": {
     "title": "Library",
@@ -82,7 +85,8 @@
     "notAnImage": "That file is not an image."
   },
   "warnings": {
-    "largeFile": "This is a large image. The emulator keeps the whole file in memory, so low-memory devices may struggle. Converting to .chd makes it much smaller."
+    "largeFile": "This is a large image. The emulator keeps the whole file in memory, so low-memory devices may struggle. Converting to .chd makes it much smaller.",
+    "chdNudge": "Tip: this is an uncompressed disc image. Converted to .chd it is usually 2–3× smaller, with nothing lost — see About for how."
   },
   "boot": {
     "idle": "Preparing",
@@ -190,7 +194,8 @@
     "inMyGames": "In My games",
     "stayOpen": "Stay open on this PC (anyone using this browser can open it)",
     "rememberedBadge": "Stays open on this PC",
-    "rememberedHint": "Close library to forget it on this PC."
+    "rememberedHint": "Close library to forget it on this PC.",
+    "chdHint": "CHD would be 2–3× smaller"
   },
   "share": {
     "share": "Share",

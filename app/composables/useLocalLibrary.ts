@@ -12,6 +12,15 @@ export interface LibraryNotice {
 
 export const LARGE_SINGLE_BYTES = 700 * 1024 * 1024
 export const LARGE_MULTI_BYTES = 1.5 * 1024 * 1024 * 1024
+/** Above this many bytes of raw disc images we suggest converting to CHD. */
+export const CHD_NUDGE_BYTES = 100 * 1024 * 1024
+
+const RAW_IMAGE = /\.(bin|iso|img)$/i
+
+/** Bytes of uncompressed disc images (bin/iso/img) among the files. */
+export function uncompressedBytes(files: { name: string; size: number }[]): number {
+  return files.filter((f) => RAW_IMAGE.test(f.name)).reduce((n, f) => n + f.size, 0)
+}
 
 /**
  * A game that could not be stored (quota) but can still be played this session.
@@ -72,6 +81,7 @@ export function useLocalLibrary() {
     const limit = game.kind === 'single' ? LARGE_SINGLE_BYTES : LARGE_MULTI_BYTES
     // Warn before the (possibly long) save so the user sees it while waiting.
     if (game.totalBytes > limit) notice.value = { kind: 'info', key: 'warnings.largeFile' }
+    else if (uncompressedBytes(game.files) > CHD_NUDGE_BYTES) notice.value = { kind: 'info', key: 'warnings.chdNudge' }
     saving.value = true
     try {
       if (games.value.length === 0) await requestPersist()

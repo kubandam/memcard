@@ -3,6 +3,7 @@ import { onMounted, ref, watch } from 'vue'
 import type { LocalGame } from '~~/shared/types/game'
 import { formatBytes } from '~/utils/format'
 import { listGames } from '~/utils/localDb'
+import { CHD_NUDGE_BYTES, uncompressedBytes } from '~/composables/useLocalLibrary'
 
 const { t } = useI18n()
 const { remembered, games, usage, uploadProgress, downloadProgress, notice, recoveryKey, close, uploadGame, deleteGame, renameGame, resumeUploads, coverUrl, isInCloud, downloadToLocal, shareGame, shareLibrary } = useCloudLibrary()
@@ -136,7 +137,9 @@ async function onDelete(id: string) {
       <p v-if="!candidates.length" class="cloud-library__empty">{{ t('cloud.pickEmpty') }}</p>
       <button v-for="g in candidates" :key="g.id" type="button" data-upload-candidate class="cloud-library__candidate" @click="upload(g)">
         <span>{{ g.title }}</span>
-        <span class="label">{{ formatBytes(g.sizeBytes) }}</span>
+        <span class="label">
+          <template v-if="uncompressedBytes(g.files) > CHD_NUDGE_BYTES">{{ t('cloud.chdHint') }} · </template>{{ formatBytes(g.sizeBytes) }}
+        </span>
       </button>
       <p class="cloud-library__empty">{{ t('cloud.pickHint') }}</p>
     </div>

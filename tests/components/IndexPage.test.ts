@@ -200,6 +200,15 @@ describe('index page', () => {
     expect(state.addGame).toHaveBeenCalledTimes(1)
   })
 
+  it('nudges towards CHD for a big uncompressed image, not for a .chd', async () => {
+    const wrapper = await mountSuspended(IndexPage)
+    await dropFiles(wrapper, [file('big.iso', 200 * 1024 * 1024)])
+    expect(wrapper.findAll('[role=status]').map((n) => n.text()).join(' ')).toMatch(/\.chd/i)
+    const w2 = await mountSuspended(IndexPage)
+    await dropFiles(w2, [file('small.chd', 200 * 1024 * 1024)])
+    expect(w2.findAll('[role=status]').map((n) => n.text()).join(' ')).not.toMatch(/smaller/i)
+  })
+
   it('shows a saving state while a game is being stored', async () => {
     let busyWhileSaving = false
     const wrapper = await mountSuspended(IndexPage)
