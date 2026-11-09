@@ -32,7 +32,7 @@ function mockCoverFetch() {
   return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
     const url = String(input)
     if (url.includes('/api/covers')) return new Response(JSON.stringify({ names: ['Crash Bandicoot (USA).png', 'Spyro the Dragon (USA).png'] }), { headers: { 'content-type': 'application/json' } })
-    return new Response(new Uint8Array(8), { headers: { 'content-type': 'image/png' } })
+    return new Response(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0, 0, 0, 0]), { headers: { 'content-type': 'image/png' } })
   })
 }
 
@@ -86,7 +86,7 @@ describe('index page', () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = String(input)
       if (url.includes('/api/covers')) return new Response(JSON.stringify({ names: ['Crash Bandicoot (USA).png'] }), { headers: { 'content-type': 'application/json' } })
-      return new Response(new Uint8Array(8), { headers: { 'content-type': 'image/png' } })
+      return new Response(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0, 0, 0, 0]), { headers: { 'content-type': 'image/png' } })
     })
     const wrapper = await mountSuspended(IndexPage)
     await flushPromises()

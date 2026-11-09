@@ -62,3 +62,25 @@ export function parseThumbnailIndex(html: string): string[] {
   }
   return names
 }
+
+/**
+ * Downloads a box-art PNG by its libretro-thumbnails name. Alternate names in that repository are git
+ * symlinks, which raw.githubusercontent serves as a tiny text body naming the real file — follow them.
+ */
+export async function fetchCoverImage(name: string, fetchFn: typeof fetch = fetch, hops = 3): Promise<Blob | null> {
+  const res = await fetchFn(THUMBNAIL_RAW_BASE + encodeURIComponent(name))
+  if (!res.ok) return null
+  const blob = await res.blob()
+  if (blob.size > 0 && blob.size < 512) {
+    const text = (await blob.text()).trim()
+    if (/^[^/\\\n]+\.png$/i.test(text) && !(await looksLikePng(blob))) {
+      return hops > 0 && text !== name ? fetchCoverImage(text, fetchFn, hops - 1) : null
+    }
+  }
+  return (await looksLikePng(blob)) ? new Blob([await blob.arrayBuffer()], { type: 'image/png' }) : null
+}
+
+async function looksLikePng(blob: Blob): Promise<boolean> {
+  const head = new Uint8Array(await blob.slice(0, 4).arrayBuffer())
+  return head[0] === 0x89 && head[1] === 0x50 && head[2] === 0x4e && head[3] === 0x47
+}

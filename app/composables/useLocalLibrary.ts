@@ -2,7 +2,7 @@ import { computed, ref, type Ref } from 'vue'
 import type { ClassifiedGame, LocalGame } from '~~/shared/types/game'
 import { classifyFiles } from '~/utils/gameFiles'
 import { StorageError, addGame, deleteGame, estimateStorage, getBlob, getSetting, listGames, renameGame, requestPersist, setCover, setSetting } from '~/utils/localDb'
-import { THUMBNAIL_RAW_BASE, pickCover } from '~~/shared/utils/coverMatch'
+import { fetchCoverImage, pickCover } from '~~/shared/utils/coverMatch'
 
 export interface LibraryNotice {
   kind: 'error' | 'info'
@@ -172,9 +172,9 @@ export function useLocalLibrary() {
         if (!opts.quiet) notice.value = { kind: 'info', key: 'covers.notFound', params: { title: game.title } }
         return
       }
-      const res = await fetch(THUMBNAIL_RAW_BASE + encodeURIComponent(name))
-      if (!res.ok) throw new Error('image')
-      await setCover(game.id, await res.blob())
+      const image = await fetchCoverImage(name)
+      if (!image) throw new Error('image')
+      await setCover(game.id, image)
       await refresh()
     } catch (err) {
       if (err instanceof StorageError) notice.value = { kind: 'error', key: err.code === 'quota' ? 'errors.quota' : 'errors.unavailable' }

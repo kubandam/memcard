@@ -53,3 +53,27 @@ describe('parseThumbnailIndex', () => {
     expect(parseThumbnailIndex(html)).toEqual(['Crash Bandicoot (USA).png', 'Spyro the Dragon (USA).png'])
   })
 })
+
+import { fetchCoverImage } from '../../shared/utils/coverMatch'
+
+describe('fetchCoverImage', () => {
+  it('follows libretro-thumbnails git symlinks (a tiny text body naming another file)', async () => {
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3])
+    const calls: string[] = []
+    const fake = async (url: string) => {
+      calls.push(decodeURIComponent(url.split('/').pop()!))
+      if (url.includes('Rev%201')) return new Response('Spider-Man 2 - Enter - Electro (USA).png', { headers: { 'content-type': 'text/plain' } })
+      return new Response(png, { headers: { 'content-type': 'image/png' } })
+    }
+    const blob = await fetchCoverImage('Spider-Man 2 - Enter - Electro (USA) (Rev 1).png', fake as typeof fetch)
+    expect(new Uint8Array(await blob!.arrayBuffer())).toEqual(png)
+    expect(calls).toEqual(['Spider-Man 2 - Enter - Electro (USA) (Rev 1).png', 'Spider-Man 2 - Enter - Electro (USA).png'])
+  })
+
+  it('returns null for something that is neither an image nor a symlink, and stops symlink loops', async () => {
+    const loop = async () => new Response('a.png', { headers: { 'content-type': 'text/plain' } })
+    expect(await fetchCoverImage('a.png', loop as typeof fetch)).toBeNull()
+    const html = async () => new Response('<html>', { status: 404 })
+    expect(await fetchCoverImage('b.png', html as typeof fetch)).toBeNull()
+  })
+})
