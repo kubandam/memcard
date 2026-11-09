@@ -4,6 +4,7 @@ import type { ClassifiedGame, LocalGame } from '~~/shared/types/game'
 import { sessionGame } from '~/composables/useLocalLibrary'
 import { getBlob, getGame, getSetting, touchLastPlayed } from '~/utils/localDb'
 import { buildGameFile } from '~/utils/packGame'
+import { readKeyboardMapping, type KeyBinding } from '~/utils/emulatorjs'
 
 definePageMeta({ layout: 'boot' })
 
@@ -15,10 +16,25 @@ const { theme } = useTheme()
 const source = computed(() => String(route.params.source))
 const id = computed(() => String(route.params.id))
 
-const { phase, progress, error, setPhase, setSubProgress, fail, start } = useEmulator()
+const { phase, progress, error, setPhase, setSubProgress, fail, start, onSaveExport } = useEmulator()
 const title = ref('')
 const notFound = ref(false)
 const controlsOpen = ref(false)
+const mapping = ref<KeyBinding[]>([])
+
+onSaveExport((save) => {
+  const url = URL.createObjectURL(new Blob([save as BlobPart], { type: 'application/octet-stream' }))
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${title.value || 'memcard'}.srm`
+  a.click()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+})
+
+function openControls() {
+  mapping.value = readKeyboardMapping((window as unknown as { EJS_emulator?: unknown }).EJS_emulator)
+  controlsOpen.value = true
+}
 
 useHead({ title: computed(() => title.value || t('player.title')) })
 
@@ -100,7 +116,8 @@ function fullscreen() {
         <a v-if="phase === 'error'" href="/" class="not-found__link">{{ t('player.backToLibrary') }}</a>
       </BootStage>
       <div id="game" class="game" />
-      <PlayerOverlay v-if="phase === 'running'" @fullscreen="fullscreen" @controls="controlsOpen = true" />
+      <PlayerOverlay v-if="phase === 'running'" @fullscreen="fullscreen" @controls="openControls" />
+      <ControlsOverlay :open="controlsOpen" :mapping="mapping" @close="controlsOpen = false" />
     </template>
   </div>
 </template>

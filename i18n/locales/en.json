@@ -89,5 +89,33 @@
     "notFound": "Game not found",
     "notFoundHint": "It may have been deleted, or this browser does not have it stored.",
     "backToLibrary": "Back to library"
+  },
+  "controls": {
+    "title": "Controls",
+    "button": "Button",
+    "key": "Key",
+    "close": "Close",
+    "remapHint": "Remap keys in the emulator menu → Control Settings.",
+    "gamepadHint": "Gamepads work automatically; press any button on the controller.",
+    "saveHint": "Memory card: use the emulator menu → Export save to download a .srm file, and Import save to load one."
+  },
+  "settings": {
+    "title": "Settings",
+    "theme": "Theme",
+    "bios": "BIOS (optional)",
+    "biosOptional": "Optional. Games run without it; some run better with a real BIOS you own. It is stored in this browser only.",
+    "biosCurrent": "Current BIOS:",
+    "biosRemove": "Remove",
+    "biosAdd": "Add BIOS file",
+    "biosReplace": "Replace BIOS file",
+    "biosSaved": "BIOS saved in this browser.",
+    "storage": "Storage",
+    "storageUnknown": "Storage usage is not available in this browser.",
+    "persisted": "This browser has granted persistent storage: your games will not be evicted automatically.",
+    "notPersisted": "Persistent storage not granted yet. The browser may clear games if space runs low.",
+    "clear": "Clear local data",
+    "clearConfirm": "Really delete all local games, saves and BIOS?",
+    "cleared": "All local data was removed.",
+    "controls": "Controls"
   }
 }

@@ -58,7 +58,7 @@ async function confirmDelete(id: string) {
 
       <Notice v-if="notice" :kind="notice.kind">
         {{ t(notice.key, notice.params ?? {}) }}
-        <a v-if="notice.key === 'errors.quota' && sessionGame" href="/play/session/current" class="notice-link">{{ t('home.playAnyway') }}</a>
+        <NuxtLink v-if="notice.key === 'errors.quota' && sessionGame" to="/play/session/current" class="notice-link">{{ t('home.playAnyway') }}</NuxtLink>
       </Notice>
 
       <GameGrid v-if="games.length">
