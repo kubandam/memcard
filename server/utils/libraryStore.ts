@@ -7,6 +7,18 @@ export interface LibraryRow {
   bytesUsed: number
 }
 
+export interface ShareRow {
+  id: string
+  libraryId: string
+  gameId: string | null
+  allowedKeys: string[]
+  wrapped: Uint8Array
+  createdAt: number
+  revokedAt: number | null
+}
+
+export type ShareListRow = Omit<ShareRow, 'wrapped'>
+
 export interface LibraryStore {
   createLibrary(id: string, authVerifier: string): Promise<'created' | 'exists'>
   getLibrary(id: string): Promise<LibraryRow | null>
@@ -27,12 +39,20 @@ export interface LibraryStore {
   openUploads(libraryId: string, since: number): Promise<number>
   /** Removes uploads created before `before` (R2 has expired them) and returns them. */
   deleteStaleUploads(before: number): Promise<{ id: string; libraryId: string; key: string }[]>
+  createShare(row: Omit<ShareRow, 'createdAt' | 'revokedAt'>): Promise<'created' | 'exists'>
+  getShare(id: string): Promise<ShareRow | null>
+  /** Newest first, without the wrapped key material. */
+  listShares(libraryId: string): Promise<ShareListRow[]>
+  /** False if the share is not that library's or is already revoked. */
+  revokeShare(libraryId: string, id: string): Promise<boolean>
+  countActiveShares(libraryId: string): Promise<number>
 }
 
 export function createMemoryStore(now: () => number = Date.now): LibraryStore {
   const libs = new Map<string, LibraryRow>()
   const objects = new Map<string, Map<string, number>>()
   const uploads = new Map<string, { libraryId: string; key: string; uploadId: string; createdAt: number; parts: Map<number, number> }>()
+  const shares = new Map<string, ShareRow>()
   return {
     async createLibrary(id, authVerifier) {
       if (libs.has(id)) return 'exists'
@@ -108,6 +128,32 @@ export function createMemoryStore(now: () => number = Date.now): LibraryStore {
       const out: { id: string; libraryId: string; key: string }[] = []
       for (const [id, u] of uploads) if (u.createdAt < before) (out.push({ id, libraryId: u.libraryId, key: u.key }), uploads.delete(id))
       return out
+    },
+    async createShare(row) {
+      if (shares.has(row.id)) return 'exists'
+      shares.set(row.id, { ...row, allowedKeys: [...row.allowedKeys], wrapped: new Uint8Array(row.wrapped), createdAt: now(), revokedAt: null })
+      return 'created'
+    },
+    async getShare(id) {
+      const r = shares.get(id)
+      return r ? { ...r, allowedKeys: [...r.allowedKeys], wrapped: new Uint8Array(r.wrapped) } : null
+    },
+    async listShares(libraryId) {
+      return [...shares.values()]
+        .filter((r) => r.libraryId === libraryId)
+        .sort((a, b) => b.createdAt - a.createdAt)
+        .map(({ wrapped: _w, ...rest }) => ({ ...rest, allowedKeys: [...rest.allowedKeys] }))
+    },
+    async revokeShare(libraryId, id) {
+      const r = shares.get(id)
+      if (!r || r.libraryId !== libraryId || r.revokedAt !== null) return false
+      r.revokedAt = now()
+      return true
+    },
+    async countActiveShares(libraryId) {
+      let n = 0
+      for (const r of shares.values()) if (r.libraryId === libraryId && r.revokedAt === null) n++
+      return n
     },
   }
 }
@@ -192,6 +238,36 @@ export function createD1Store(db: D1Database): LibraryStore {
         await db.batch([db.prepare('DELETE FROM upload_parts WHERE upload_id = ?1').bind(row.id), db.prepare('DELETE FROM uploads WHERE id = ?1').bind(row.id)])
       }
       return r.results.map((x) => ({ id: x.id, libraryId: x.library_id, key: x.key }))
+    },
+    async createShare(row) {
+      const res = await db
+        .prepare('INSERT OR IGNORE INTO shares (id, library_id, game_id, allowed_keys, wrapped, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)')
+        .bind(row.id, row.libraryId, row.gameId, JSON.stringify(row.allowedKeys), row.wrapped, now())
+        .run()
+      return res.meta.changes > 0 ? 'created' : 'exists'
+    },
+    async getShare(id) {
+      const r = await db
+        .prepare('SELECT id, library_id, game_id, allowed_keys, wrapped, created_at, revoked_at FROM shares WHERE id = ?1')
+        .bind(id)
+        .first<{ id: string; library_id: string; game_id: string | null; allowed_keys: string; wrapped: ArrayBuffer | number[]; created_at: number; revoked_at: number | null }>()
+      if (!r) return null
+      return { id: r.id, libraryId: r.library_id, gameId: r.game_id, allowedKeys: JSON.parse(r.allowed_keys) as string[], wrapped: new Uint8Array(r.wrapped as ArrayBuffer), createdAt: r.created_at, revokedAt: r.revoked_at }
+    },
+    async listShares(libraryId) {
+      const r = await db
+        .prepare('SELECT id, library_id, game_id, allowed_keys, created_at, revoked_at FROM shares WHERE library_id = ?1 ORDER BY created_at DESC')
+        .bind(libraryId)
+        .all<{ id: string; library_id: string; game_id: string | null; allowed_keys: string; created_at: number; revoked_at: number | null }>()
+      return r.results.map((x) => ({ id: x.id, libraryId: x.library_id, gameId: x.game_id, allowedKeys: JSON.parse(x.allowed_keys) as string[], createdAt: x.created_at, revokedAt: x.revoked_at }))
+    },
+    async revokeShare(libraryId, id) {
+      const res = await db.prepare('UPDATE shares SET revoked_at = ?3 WHERE id = ?1 AND library_id = ?2 AND revoked_at IS NULL').bind(id, libraryId, now()).run()
+      return res.meta.changes === 1
+    },
+    async countActiveShares(libraryId) {
+      const r = await db.prepare('SELECT COUNT(*) AS n FROM shares WHERE library_id = ?1 AND revoked_at IS NULL').bind(libraryId).first<{ n: number }>()
+      return r?.n ?? 0
     },
   }
 }

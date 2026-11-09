@@ -5,6 +5,7 @@ export interface MemcardEnv {
   DB: D1Database
   R2: R2Bucket
   RL_CREATE?: { limit: (opts: { key: string }) => Promise<{ success: boolean }> }
+  RL_SHARE?: { limit: (opts: { key: string }) => Promise<{ success: boolean }> }
   MEMCARD_INVITES?: string
   TOTAL_BYTES_LIMIT?: string
 }
