@@ -57,6 +57,13 @@ describe('useEmulator', () => {
     expect(emu.allSettings).toEqual({})
   })
 
+  it('refuses to write unsafe extra-file paths into the emulator FS', () => {
+    const { start, phase } = useEmulator()
+    start({ ...base, extraFiles: [{ path: '/../data/saves/x.srm', data: new Uint8Array(1) }] })
+    expect(phase.value).toBe('error')
+    expect(document.querySelector('script[data-ejs-loader]')).toBeNull()
+  })
+
   it('sets a 30 s save interval by default and no ROM cache', () => {
     useEmulator().start(base)
     expect((w().EJS_defaultOptions as Record<string, string>)['save-save-interval']).toBe('30')

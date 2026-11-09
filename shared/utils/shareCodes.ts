@@ -3,6 +3,7 @@ import { decodeBase32, encodeBase32 } from './base32'
 import { concatBytes } from './bytes'
 import { decryptJson, encryptJson } from './chunkCrypto'
 import { hkdf } from './libraryKeys'
+import { validateCloudGame } from './validateGame'
 
 const SECRET_BYTES = 10
 const CODE_CHARS = 16
@@ -47,6 +48,6 @@ export async function unwrapPayload(kShare: CryptoKey, bytes: Uint8Array): Promi
   const p = await decryptJson<SharePayload>(kShare, bytes)
   if (p?.v !== 1) throw new Error('Unsupported share payload')
   if (p.kind === 'library' && typeof p.kLib === 'string') return p
-  if (p.kind === 'game' && p.game && typeof p.game.kGame === 'string' && Array.isArray(p.game.files)) return p
+  if (p.kind === 'game' && validateCloudGame(p.game)) return p
   throw new Error('Malformed share payload')
 }

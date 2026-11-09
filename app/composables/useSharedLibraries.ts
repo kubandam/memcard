@@ -4,6 +4,7 @@ import type { CloudGame, LibraryManifest } from '~~/shared/types/library'
 import { fromBase64Url } from '~~/shared/utils/bytes'
 import { decryptJson } from '~~/shared/utils/chunkCrypto'
 import { deriveShareKeys, formatShareCode, parseShareCode, unwrapPayload } from '~~/shared/utils/shareCodes'
+import { validateCloudGame } from '~~/shared/utils/validateGame'
 import { ApiError, createShareReader, lookupShare, type ShareLookup, type ShareReader } from '~/utils/cloudApi'
 import { DecryptError, downloadObject } from '~/utils/cloudDownload'
 import { addGame, getSetting, setCover, setSetting } from '~/utils/localDb'
@@ -98,7 +99,8 @@ export function useSharedLibraries() {
       if (payload.kind !== 'library') return { ...base, status: 'error' }
       const kLib = await crypto.subtle.importKey('raw', fromBase64Url(payload.kLib) as BufferSource, 'AES-GCM', false, ['decrypt'])
       const manifest = await transport.reader(shareId, info.libraryId).getManifest()
-      const games = manifest ? (await decryptJson<LibraryManifest>(kLib, manifest.bytes)).games : []
+      // Someone else's manifest: drop any game whose names would be unsafe in the emulator FS.
+      const games = manifest ? ((await decryptJson<LibraryManifest>(kLib, manifest.bytes)).games ?? []).filter(validateCloudGame) : []
       return { ...base, libraryId: info.libraryId, games }
     } catch (err) {
       return { ...base, status: errorKind(err) === 'invalid' ? 'revoked' : 'error' }

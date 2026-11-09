@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 import { buildEjsGlobals, type EjsOptions } from '~/utils/emulatorjs'
 import type { ExtraFile } from '~/utils/gamePayload'
+import { isSafeFileName } from '~~/shared/utils/validateGame'
 
 export type EmulatorPhase = 'idle' | 'reading' | 'packing' | 'loading' | 'starting' | 'running' | 'error'
 
@@ -102,6 +103,11 @@ export function useEmulator() {
       return
     }
     const { bios, extraFiles = [], ...ejs } = opts
+    // Defense in depth: only plain files directly in the FS root (never ../ or nested paths).
+    if (extraFiles.some((f) => !f.path.startsWith('/') || !isSafeFileName(f.path.slice(1)))) {
+      fail('This game contains a file name that is not allowed, so it was not started.')
+      return
+    }
     const globals = buildEjsGlobals(ejs)
     globals.EJS_defaultOptions = { ...(globals.EJS_defaultOptions as object), 'save-save-interval': '30' }
     globals.EJS_CacheLimit = 0 // local games already live in the app's own IndexedDB

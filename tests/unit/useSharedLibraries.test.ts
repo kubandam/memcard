@@ -118,3 +118,21 @@ describe('recipient', () => {
     expect(await listGames()).toHaveLength(1) // owner's local copy only
   }, 60_000)
 })
+
+describe('untrusted shared manifests', () => {
+  beforeEach(() => {
+    globalThis.indexedDB = new IDBFactory()
+    __resetDbForTests(); __resetCloudForTests(); __resetSharedForTests(); sessionStorageShim()
+  })
+
+  it('drops games with unsafe file names from a shared library', async () => {
+    const { owner } = await ownerWithGame('Good Game')
+    await owner.saveManifest((m) => {
+      m.games.push({ ...m.games[0]!, id: 'evil', title: 'Evil', primaryName: '../data/saves/x.srm', files: [{ ...m.games[0]!.files[0]!, name: '../data/saves/x.srm' }], kind: 'single', generatedM3u: undefined })
+    })
+    const code = await owner.shareLibrary()
+    const shared = useSharedLibraries()
+    await shared.redeem(code)
+    expect(shared.libraries.value[0]!.games.map((g) => g.title)).toEqual(['Good Game'])
+  }, 60_000)
+})
