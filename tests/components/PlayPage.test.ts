@@ -29,6 +29,13 @@ const cloudMock = vi.hoisted(() => ({
   games: { value: [] as unknown[] },
   restore: async () => {},
   downloadGameFiles: async (_g: unknown, _p?: (d: number, t: number) => void) => [new File([new Uint8Array(4)], 'Cloud Game.chd')] as File[],
+  getSaveCalls: 0,
+  saveApi() {
+    return {
+      getSave: async () => { cloudMock.getSaveCalls++; return null },
+      putSave: async () => {},
+    }
+  },
 }))
 mockNuxtImport('useCloudLibrary', () => () => cloudMock)
 
@@ -150,12 +157,12 @@ describe('play page', () => {
   it('cloud: downloads, decrypts and boots the game', async () => {
     state.route = { params: { source: 'cloud', id: 'c1' }, query: {} }
     cloudMock.status.value = 'open'
-    cloudMock.games.value = [{ id: 'c1', title: 'Cloud Game', kind: 'single', primaryName: 'Cloud Game.chd', files: [{ name: 'Cloud Game.chd', size: 4, objectKey: 'k', chunks: 1 }], sizeBytes: 4, createdAt: 1, lastPlayedAt: null, kGame: 'x' }]
+    cloudMock.games.value = [{ id: 'c1', title: 'Cloud Game', kind: 'single', primaryName: 'Cloud Game.chd', files: [{ name: 'Cloud Game.chd', size: 4, objectKey: 'k', chunks: 1 }], sizeBytes: 4, createdAt: 1, lastPlayedAt: null, kGame: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' }]
     const phases = observePhases()
     const wrapper = await mountSuspended(PlayPage)
-    await flushPromises()
-    await flushPromises()
+    await vi.waitFor(() => expect(document.documentElement.dataset.phase).toBe('loading'))
     expect(phases()).toEqual(['reading', 'loading'])
+    expect(cloudMock.getSaveCalls).toBe(1)
     expect(wrapper.text()).toContain('Cloud Game')
     expect(((window as unknown as Record<string, unknown>).EJS_gameUrl as File).name).toBe('Cloud Game.chd')
     state.route = { params: { source: 'local', id: 'g1' }, query: {} }
@@ -166,8 +173,7 @@ describe('play page', () => {
     sharedMock.revoked = false
     sharedMock.libraries.value = [{ shareId: 'sid', code: 'MC-X', libraryId: 'lib', status: 'ok', games: [{ id: 'g1', title: 'Shared One', kind: 'single', primaryName: 'Shared One.chd', files: [{ name: 'Shared One.chd', size: 4, objectKey: 'k', chunks: 1 }], sizeBytes: 4, createdAt: 1, lastPlayedAt: null, kGame: 'x' }] }]
     const wrapper = await mountSuspended(PlayPage)
-    await flushPromises()
-    await flushPromises()
+    await vi.waitFor(() => expect(document.documentElement.dataset.phase).toBe('loading'))
     expect(wrapper.text()).toContain('Shared One')
     expect(((window as unknown as Record<string, unknown>).EJS_gameUrl as File).name).toBe('Shared One.chd')
     state.route = { params: { source: 'local', id: 'g1' }, query: {} }

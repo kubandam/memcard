@@ -136,6 +136,11 @@ describe('createSaveSync', () => {
     await vi.waitFor(() => expect(t.store.puts).toHaveLength(1))
   })
 
+  it('never throws from prepare, even with an unusable game key', async () => {
+    const sync = createSaveSync({ api: { getSave: vi.fn(), putSave: vi.fn() }, kGame: new Uint8Array(0), getMeta: async () => null, setMeta: async () => {} })
+    await expect(sync.prepare()).resolves.toBeUndefined()
+  })
+
   it('a 404 from getSave just means no cloud save yet', async () => {
     const s = setup()
     s.api.getSave.mockRejectedValueOnce(new ApiError(404))

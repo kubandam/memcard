@@ -211,12 +211,16 @@ describe('useCloudLibrary — uploads', () => {
     expect(lib.notice.value?.key).toBe('cloud.corrupt')
   }, 60_000)
 
-  it('deleteGame removes objects and the manifest entry', async () => {
+  it('deleteGame removes objects, the manifest entry and the game\'s cloud save', async () => {
     const lib = await openWith(createFakeCloudApi())
     await lib.uploadGame(await localGame([['x.chd', 1000]], 'X'))
+    const { deriveSaveKeys } = await import('../../shared/utils/saveSync')
+    const { saveKey } = await deriveSaveKeys(fromBase64Url(lib.games.value[0]!.kGame))
+    fake.saves.set(saveKey, new Uint8Array([1]))
     await lib.deleteGame(lib.games.value[0]!.id)
     expect(lib.games.value).toEqual([])
     expect(fake.objects.size).toBe(0)
+    expect(fake.saves.size).toBe(0)
   }, 60_000)
 })
 

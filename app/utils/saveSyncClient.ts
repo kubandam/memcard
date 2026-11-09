@@ -51,7 +51,14 @@ export function createSaveSync(opts: {
 
   /** Fetches the cloud card and this browser's sync record. Never throws: problems only change `status`. */
   async function prepare(): Promise<void> {
-    keys = await deriveSaveKeys(opts.kGame)
+    try {
+      keys = await deriveSaveKeys(opts.kGame)
+    } catch {
+      // Without keys there is no sync; the game still plays with its local card.
+      keys = null
+      status.value = 'error'
+      return
+    }
     meta = await opts.getMeta(keys.saveKey).catch(() => null)
     lastPushedHash = meta?.hash ?? null
     let bytes: Uint8Array | null = null

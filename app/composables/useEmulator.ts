@@ -46,6 +46,16 @@ export interface StartOptions extends EjsOptions {
   bios?: Uint8Array
   /** Discs / tracks referenced by the primary file; written to the FS before the ROM loads. */
   extraFiles?: ExtraFile[]
+  /** Runs synchronously once the FS (incl. saved cards) is mounted, before the core boots. */
+  onFsReady?: (fs: unknown, cardPath: string) => void
+  /** Receives the memory card bytes every time EmulatorJS flushes it. */
+  onCardSaved?: (card: Uint8Array) => void
+}
+
+/** Where pcsx_rearmed keeps the memory card for a given EJS_gameName. */
+export function cardPathFor(gameName: string): string {
+  const base = gameName.replace(/\.[^.]+$/, '')
+  return `/data/saves/PCSX-ReARMed/${base}.srm`
 }
 
 /**
@@ -102,7 +112,7 @@ export function useEmulator() {
       fail('An emulator is already running on this page. Reload to start another game.')
       return
     }
-    const { bios, extraFiles = [], ...ejs } = opts
+    const { bios, extraFiles = [], onFsReady, onCardSaved, ...ejs } = opts
     // Defense in depth: only plain files directly in the FS root (never ../ or nested paths).
     if (extraFiles.some((f) => !f.path.startsWith('/') || !isSafeFileName(f.path.slice(1)))) {
       fail('This game contains a file name that is not allowed, so it was not started.')
@@ -118,14 +128,24 @@ export function useEmulator() {
 
     w.EJS_ready = (emu: unknown) => {
       const instance = (emu as EmulatorInstance) ?? emulator()
-      if (pending.length) {
+      if (pending.length || onFsReady || onCardSaved) {
         if (!instance?.on || instance.gameManager) {
           fail('The emulator initialised before extra files could be attached. Reload to try again.')
           return
         }
         instance.on('saveDatabaseLoaded', (fs) => {
           for (const f of pending) (fs as FsLike).writeFile(f.path, f.data)
+          try {
+            onFsReady?.(fs, cardPathFor(opts.gameName))
+          } catch {
+            // Save sync must never stop the game from starting.
+          }
         })
+        if (onCardSaved) {
+          instance.on('saveSaveFiles', (bytes) => {
+            if (bytes instanceof Uint8Array && bytes.length) onCardSaved(bytes)
+          })
+        }
       }
       // EmulatorJS 4.2.3 bug: startGame() runs setupDisksMenu() before setupSettingsMenu() creates
       // `allSettings`, so any game with more than one disc throws "Cannot set properties of undefined

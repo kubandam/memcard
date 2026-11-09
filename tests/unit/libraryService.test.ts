@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
 import { createMemoryStore } from '../../server/utils/libraryStore'
-import { createLibraryService, ServiceError } from '../../server/utils/libraryService'
+import { createLibraryService, MAX_SAVES, ServiceError } from '../../server/utils/libraryService'
 import { createFakeR2 } from './fakeR2'
 
 const MiB = 1024 * 1024
@@ -174,6 +174,23 @@ describe('saves', () => {
     expect(await code(svc.getSave('liba', SK))).toBe(404)
     expect((await store.getLibrary('liba'))!.bytesUsed).toBe(0)
   })
+  it('re-checks the quota after writing (concurrent writers) and caps the number of saves', async () => {
+    const { svc, store, r2 } = await setup(2 * MiB)
+    // Simulate another writer filling the space between our check and our write.
+    const realPut = r2.bucket.put.bind(r2.bucket)
+    r2.bucket.put = async (k: string, b: Uint8Array) => { await store.addObject('libb', 'other', 2 * MiB); return realPut(k, b) }
+    expect(await code(svc.putSave('liba', SK, new Uint8Array(100)))).toBe(413)
+    expect([...r2.objects.keys()].some((k) => k.includes('/save/'))).toBe(false)
+    expect((await store.getLibrary('liba'))!.bytesUsed).toBe(0)
+  })
+
+  it('caps how many saves one library holds', async () => {
+    const { svc } = await setup()
+    for (let i = 0; i < MAX_SAVES; i++) await svc.putSave('liba', `abcdefghjkmnpqrstv${String(i).padStart(5, '0')}`, new Uint8Array(1))
+    expect(await code(svc.putSave('liba', 'abcdefghjkmnpqrstvzzzzz', new Uint8Array(1)))).toBe(429)
+    expect(await code(svc.putSave('liba', 'abcdefghjkmnpqrstv00000', new Uint8Array(2)))).toBe('ok')
+  }, 30_000)
+
   it('refuses empty or oversized saves and respects the quota', async () => {
     const { svc } = await setup(2 * MiB)
     expect(await code(svc.putSave('liba', SK, new Uint8Array(0)))).toBe(400)

@@ -226,5 +226,12 @@
     "haveCode": "Have a code?",
     "tooManyCodes": "Too many active codes. Revoke some under Codes you issued, then try again.",
     "gameGone": "This game was removed from the shared library."
+  },
+  "save": {
+    "synced": "Saved to cloud · {time}",
+    "offline": "Saves stay on this PC until you are online",
+    "error": "Cloud save was damaged — your save here will replace it",
+    "pulled": "Loaded your save from the cloud",
+    "conflict": "Both this PC and the cloud had newer saves — the cloud one is loaded, this PC's was downloaded as a file"
   }
 }

@@ -9,6 +9,10 @@ import { getBlob, getGame, getSetting, touchLastPlayed } from '~/utils/localDb'
 import { ApiError } from '~/utils/cloudApi'
 import { DecryptError } from '~/utils/cloudDownload'
 import { SharedGameGoneError, ShareRevokedError } from '~/composables/useSharedLibraries'
+import { createSaveSync, type CardFs } from '~/utils/saveSyncClient'
+import { fromBase64Url } from '~~/shared/utils/bytes'
+import type { SyncMeta } from '~~/shared/utils/saveSync'
+import { setSetting } from '~/utils/localDb'
 
 definePageMeta({ layout: 'boot' })
 
@@ -25,6 +29,22 @@ const notFound = ref(false)
 const libraryClosed = ref(false)
 const controlsOpen = ref(false)
 const mapping = ref<KeyBinding[]>([])
+const saveSync = ref<ReturnType<typeof createSaveSync> | null>(null)
+const saveNotice = ref<string | null>(null)
+
+interface BootHooks {
+  onFsReady?: (fs: unknown, path: string) => void
+  onCardSaved?: (card: Uint8Array) => void
+}
+
+function downloadCard(card: Uint8Array, name: string) {
+  const url = URL.createObjectURL(new Blob([card as BlobPart], { type: 'application/octet-stream' }))
+  const a = document.createElement('a')
+  a.href = url
+  a.download = name
+  a.click()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
 
 useHead({ title: computed(() => title.value || t('player.title')) })
 
@@ -59,13 +79,13 @@ function ejsColor(): string {
   return value || '#f2f2f2'
 }
 
-async function boot(game: LocalGame, getter: BlobGetter) {
+async function boot(game: LocalGame, getter: BlobGetter, hooks: BootHooks = {}) {
   title.value = game.title
   if (phase.value !== 'reading') setPhase('reading')
   if (game.kind === 'multi') setPhase('packing')
   const payload = await buildGamePayload(game, getter, (f) => setSubProgress(game.kind === 'multi' ? 'packing' : 'reading', 'loading', f))
   const bios = await readBiosBytes()
-  start({ file: payload.file, extraFiles: payload.extraFiles, bios, gameName: game.primaryName, base: emulatorjsBase, color: ejsColor() })
+  start({ file: payload.file, extraFiles: payload.extraFiles, bios, gameName: game.primaryName, base: emulatorjsBase, color: ejsColor(), ...hooks })
 }
 
 async function loadLocal(game: LocalGame) {
@@ -95,7 +115,34 @@ async function loadCloud(gameId: string) {
     createdAt: game.createdAt,
     lastPlayedAt: game.lastPlayedAt,
   }
-  await boot(pseudo, async (key) => byName.get(key))
+  // Memory-card sync: fetch the cloud card before boot, inject it in the FS hook, push changes while playing.
+  let kGame: Uint8Array
+  try {
+    kGame = fromBase64Url(game.kGame)
+  } catch {
+    // Without a usable game key there is nothing to sync; play anyway.
+    return boot(pseudo, async (key) => byName.get(key))
+  }
+  const sync = createSaveSync({
+    api: cloud.saveApi(),
+    kGame,
+    getMeta: async (k) => (await getSetting<SyncMeta>(`saveSync.${k}`)) ?? null,
+    setMeta: (k, m) => setSetting(`saveSync.${k}`, m),
+  })
+  await sync.prepare().catch(() => undefined)
+  saveSync.value = sync
+  await boot(pseudo, async (key) => byName.get(key), {
+    onFsReady: (fs, path) => {
+      const res = sync.onFsReady(fs as CardFs, path)
+      if (res.action === 'conflict' && res.keepLocal) {
+        downloadCard(res.keepLocal, `${game.title} (this PC, ${new Date().toISOString().slice(0, 10)}).srm`)
+        saveNotice.value = t('save.conflict')
+      } else if (res.action === 'pull') {
+        saveNotice.value = t('save.pulled')
+      }
+    },
+    onCardSaved: (card) => sync.onCardSaved(card),
+  })
 }
 
 async function loadShared(gameId: string, shareId: string) {
@@ -222,7 +269,15 @@ function fullscreen() {
         <a href="/" class="exit-link" @click.prevent="leave">{{ t('player.backToLibrary') }}</a>
       </BootStage>
       <div id="game" class="game" />
-      <PlayerOverlay v-if="phase === 'running'" @fullscreen="fullscreen" @controls="openControls" @leave="leave" />
+      <PlayerOverlay
+        v-if="phase === 'running'"
+        :save-status="saveSync?.status.value ?? null"
+        :saved-at="saveSync?.lastSyncedAt.value ?? null"
+        :save-notice="saveNotice"
+        @fullscreen="fullscreen"
+        @controls="openControls"
+        @leave="leave"
+      />
       <ControlsOverlay :open="controlsOpen" :mapping="mapping" @close="controlsOpen = false" />
     </template>
   </div>

@@ -26,6 +26,8 @@ export const objectPath = (libraryId: string, key: string) => `lib/${libraryId}/
 const savePath = (libraryId: string, saveKey: string) => `lib/${libraryId}/save/${saveKey}`
 /** Largest encrypted memory card accepted (PS1 cards are 128 KiB). */
 export const MAX_SAVE_BYTES = 1024 * 1024
+/** Memory cards one library may hold (one per game). */
+export const MAX_SAVES = 500
 
 export interface LibraryService {
   getManifest(libraryId: string): Promise<{ bytes: Uint8Array; etag: string } | null>
@@ -206,13 +208,31 @@ export function createLibraryService(deps: { store: LibraryStore; r2: R2Bucket; 
     async putSave(libraryId, saveKey, body) {
       if (body.length === 0 || body.length > MAX_SAVE_BYTES) throw new ServiceError(400)
       const accountKey = `save:${saveKey}`
-      const previous = (await store.listObjects(libraryId)).find((o) => o.key === accountKey)?.size ?? 0
+      const objects = await store.listObjects(libraryId)
+      const previous = objects.find((o) => o.key === accountKey)?.size ?? 0
+      if (!objects.some((o) => o.key === accountKey) && objects.filter((o) => o.key.startsWith('save:')).length >= MAX_SAVES) {
+        throw new ServiceError(429, 'too-many-saves')
+      }
       const delta = body.length - previous
       const lib = await store.getLibrary(libraryId)
       if ((await store.totalBytes()) + (await store.pendingBytes(since())) + delta > hardLimit) throw new ServiceError(413, 'quota')
       if ((lib?.bytesUsed ?? 0) + (await store.pendingBytes(since(), libraryId)) + delta > libraryLimit) throw new ServiceError(413, 'quota')
+      const prevBody = previous ? await r2.get(savePath(libraryId, saveKey)) : null
+      const prevBytes = prevBody ? new Uint8Array(await prevBody.arrayBuffer()) : null
       await r2.put(savePath(libraryId, saveKey), body)
       await store.addObject(libraryId, accountKey, body.length)
+      // Re-check after the write: a concurrent writer may have used the space meanwhile.
+      const libAfter = await store.getLibrary(libraryId)
+      if ((await store.totalBytes()) > hardLimit || (libAfter?.bytesUsed ?? 0) > libraryLimit) {
+        if (prevBytes) {
+          await r2.put(savePath(libraryId, saveKey), prevBytes)
+          await store.addObject(libraryId, accountKey, prevBytes.length)
+        } else {
+          await r2.delete(savePath(libraryId, saveKey))
+          await store.removeObject(libraryId, accountKey)
+        }
+        throw new ServiceError(413, 'quota')
+      }
     },
 
     async deleteSave(libraryId, saveKey) {

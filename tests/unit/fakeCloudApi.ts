@@ -14,6 +14,7 @@ export function createFakeCloudApi(opts: { quotaBytes?: number; libraryId?: stri
   const libraryId = opts.libraryId ?? 'lib'
   const shares = new Map<string, { gameId: string | null; allowedKeys: string[]; wrapped: Uint8Array; createdAt: number; revokedAt: number | null }>()
   let clock = 0
+  const saves = new Map<string, Uint8Array>()
   const api: CloudApi = {
     async createLibrary() {},
     async usage() { return { bytesUsed: used, softLimit: 8 * 1024 ** 3, hardLimit: opts.quotaBytes ?? 9 * 1024 ** 3 } },
@@ -44,6 +45,9 @@ export function createFakeCloudApi(opts: { quotaBytes?: number; libraryId?: stri
       return o.slice(start, end + 1)
     },
     async deleteObject(key) { const o = objects.get(key); if (o) used -= o.length; objects.delete(key) },
+    async getSave(saveKey) { return saves.get(saveKey) ?? null },
+    async putSave(saveKey, bytes) { saves.set(saveKey, bytes.slice()) },
+    async deleteSave(saveKey) { saves.delete(saveKey) },
     async createShare(input) {
       if (shares.has(input.shareId)) throw new ApiError(409)
       shares.set(input.shareId, { gameId: input.gameId, allowedKeys: [...input.allowedKeys], wrapped: input.wrapped.slice(), createdAt: ++clock, revokedAt: null })
@@ -76,5 +80,5 @@ export function createFakeCloudApi(opts: { quotaBytes?: number; libraryId?: stri
       }
     },
   }
-  return { api, objects, uploads, calls, shares, shareTransport, failManifestOnce: () => { failNextPutManifest = true } }
+  return { api, objects, uploads, calls, shares, saves, shareTransport, failManifestOnce: () => { failNextPutManifest = true } }
 }

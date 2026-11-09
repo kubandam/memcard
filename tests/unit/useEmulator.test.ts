@@ -64,6 +64,21 @@ describe('useEmulator', () => {
     expect(document.querySelector('script[data-ejs-loader]')).toBeNull()
   })
 
+  it('calls onFsReady with the FS and the card path, and forwards flushed cards', () => {
+    const fsCalls: [unknown, string][] = []
+    const cards: Uint8Array[] = []
+    const { start } = useEmulator()
+    start({ ...base, gameName: 'Crash Bandicoot.chd', onFsReady: (fs, path) => void fsCalls.push([fs, path]), onCardSaved: (b) => void cards.push(b) })
+    const emu = fakeEmulator()
+    w().EJS_emulator = emu
+    w().EJS_ready!(emu)
+    emu.fire('saveDatabaseLoaded', emu.FS)
+    expect(fsCalls).toEqual([[emu.FS, '/data/saves/PCSX-ReARMed/Crash Bandicoot.srm']])
+    emu.fire('saveSaveFiles', new Uint8Array([1, 2]))
+    emu.fire('saveSaveFiles', null)
+    expect(cards).toEqual([new Uint8Array([1, 2])])
+  })
+
   it('sets a 30 s save interval by default and no ROM cache', () => {
     useEmulator().start(base)
     expect((w().EJS_defaultOptions as Record<string, string>)['save-save-interval']).toBe('30')
