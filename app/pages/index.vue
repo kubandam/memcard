@@ -20,10 +20,12 @@ const renameValue = ref('')
 const confirmingDelete = ref<string | null>(null)
 
 const cloud = useCloudLibrary()
+const shared = useSharedLibraries()
 
 onMounted(() => {
   refresh()
   cloud.restore()
+  shared.restore()
 })
 
 function startRename(game: LocalGame) {
@@ -73,7 +75,15 @@ async function confirmDelete(id: string) {
         <CloudLibrary v-if="cloud.status.value === 'open'" @downloaded="refresh" />
         <CloudPanel v-else />
       </ClientOnly>
+      <div class="redeem-wrap">
+        <p class="label">{{ t('share.haveCode') }}</p>
+        <ClientOnly><RedeemCode @downloaded="refresh" /></ClientOnly>
+      </div>
     </section>
+
+    <ClientOnly>
+      <SharedLibrary v-for="lib in shared.libraries.value" :key="lib.shareId" :library="lib" @downloaded="refresh" />
+    </ClientOnly>
 
     <section aria-labelledby="my-games">
       <div class="library-head">
@@ -156,6 +166,12 @@ async function confirmDelete(id: string) {
   display: flex;
   gap: 18px;
   align-items: baseline;
+}
+
+.redeem-wrap {
+  margin-top: 20px;
+  display: grid;
+  gap: 8px;
 }
 
 .consent-actions {

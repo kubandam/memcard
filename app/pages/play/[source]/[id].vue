@@ -8,6 +8,7 @@ import { buildGamePayload, type BlobGetter } from '~/utils/gamePayload'
 import { getBlob, getGame, getSetting, touchLastPlayed } from '~/utils/localDb'
 import { ApiError } from '~/utils/cloudApi'
 import { DecryptError } from '~/utils/cloudDownload'
+import { ShareRevokedError } from '~/composables/useSharedLibraries'
 
 definePageMeta({ layout: 'boot' })
 
@@ -97,6 +98,35 @@ async function loadCloud(gameId: string) {
   await boot(pseudo, async (key) => byName.get(key))
 }
 
+async function loadShared(gameId: string, shareId: string) {
+  const shared = useSharedLibraries()
+  await shared.restore()
+  const lib = shared.libraries.value.find((l) => l.shareId === shareId)
+  if (!lib) return void (notFound.value = true)
+  if (lib.status === 'revoked') throw new ShareRevokedError()
+  const game = lib.games.find((g) => g.id === gameId)
+  if (!game) return void (notFound.value = true)
+  title.value = game.title
+  setPhase('reading')
+  const files = await shared.downloadGameFiles(shareId, game, (done, total) => setSubProgress('reading', 'loading', done / Math.max(1, total)), lib.libraryId)
+  const byName = new Map(files.map((f) => [f.name, f]))
+  await boot(
+    {
+      id: game.id,
+      title: game.title,
+      source: 'cloud',
+      kind: game.kind,
+      primaryName: game.primaryName,
+      files: game.files.map((f) => ({ name: f.name, size: f.size, blobKey: f.name })),
+      generatedM3u: game.generatedM3u,
+      sizeBytes: game.sizeBytes,
+      createdAt: game.createdAt,
+      lastPlayedAt: game.lastPlayedAt,
+    },
+    async (key) => byName.get(key),
+  )
+}
+
 async function loadSession(game: ClassifiedGame) {
   const blobs = new Map(game.files.map((f) => [f.name, f]))
   const pseudo: LocalGame = {
@@ -128,12 +158,15 @@ onMounted(async () => {
       await loadSession(game)
     } else if (source.value === 'cloud') {
       await loadCloud(id.value)
+    } else if (source.value === 'shared') {
+      await loadShared(id.value, String(route.query.share ?? ''))
     } else {
-      // 'free' (M2) and 'shared' (M3b) are not implemented yet.
+      // 'free' (M2) is not implemented yet.
       notFound.value = true
     }
   } catch (err) {
-    if (err instanceof DecryptError) fail(t('cloud.corrupt'))
+    if (err instanceof ShareRevokedError) fail(t('share.invalid'))
+    else if (err instanceof DecryptError) fail(t('cloud.corrupt'))
     else if (err instanceof ApiError && err.status === 404) fail(t('cloud.missingObject'))
     else if (err instanceof ApiError) fail(t('cloud.network'))
     else fail(err instanceof Error ? err.message : String(err))

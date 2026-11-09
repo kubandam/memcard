@@ -199,6 +199,22 @@
     "issuedEmpty": "No active codes.",
     "wholeLibrary": "Whole library",
     "revoke": "Revoke",
-    "revokeConfirm": "Really revoke?"
+    "revokeConfirm": "Really revoke?",
+    "codePlaceholder": "Have a code? MC-XXXX-XXXX-XXXX-XXXX",
+    "redeem": "Use code",
+    "checking": "Checking…",
+    "badFormat": "That doesn't look like a code. It has 16 letters and digits after MC-.",
+    "invalid": "This code is no longer valid. Ask the person who gave it to you for a new one.",
+    "tooMany": "Too many attempts. Wait a minute and try again.",
+    "fromCode": "Shared with you",
+    "downloadToMyGames": "Download to My games",
+    "added": "Added to My games.",
+    "libraryAdded": "Shared library added below.",
+    "sharedLibrary": "Shared library",
+    "readOnly": "Read-only",
+    "remove": "Remove",
+    "revokedLibrary": "This shared library's code is no longer valid. Games you already downloaded stay in My games.",
+    "emptyLibrary": "No games in this library yet.",
+    "haveCode": "Have a code?"
   }
 }

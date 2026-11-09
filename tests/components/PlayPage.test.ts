@@ -32,6 +32,20 @@ const cloudMock = vi.hoisted(() => ({
 }))
 mockNuxtImport('useCloudLibrary', () => () => cloudMock)
 
+const sharedMock = vi.hoisted(() => ({
+  libraries: { value: [] as unknown[] },
+  restore: async () => {},
+  revoked: false,
+  async downloadGameFiles(_s: string, g: { primaryName: string }) {
+    if (sharedMock.revoked) {
+      const { ShareRevokedError } = await import('../../app/composables/useSharedLibraries')
+      throw new ShareRevokedError()
+    }
+    return [new File([new Uint8Array(4)], g.primaryName)]
+  },
+}))
+mockNuxtImport('useSharedLibraries', () => () => sharedMock)
+
 const game: LocalGame = {
   id: 'g1',
   title: 'Magic Castle',
@@ -143,6 +157,29 @@ describe('play page', () => {
     expect(phases()).toEqual(['reading', 'loading'])
     expect(wrapper.text()).toContain('Cloud Game')
     expect(((window as unknown as Record<string, unknown>).EJS_gameUrl as File).name).toBe('Cloud Game.chd')
+    state.route = { params: { source: 'local', id: 'g1' }, query: {} }
+  })
+
+  it('shared: downloads through the share and boots', async () => {
+    state.route = { params: { source: 'shared', id: 'g1' }, query: { share: 'sid' } }
+    sharedMock.revoked = false
+    sharedMock.libraries.value = [{ shareId: 'sid', code: 'MC-X', libraryId: 'lib', status: 'ok', games: [{ id: 'g1', title: 'Shared One', kind: 'single', primaryName: 'Shared One.chd', files: [{ name: 'Shared One.chd', size: 4, objectKey: 'k', chunks: 1 }], sizeBytes: 4, createdAt: 1, lastPlayedAt: null, kGame: 'x' }] }]
+    const wrapper = await mountSuspended(PlayPage)
+    await flushPromises()
+    await flushPromises()
+    expect(wrapper.text()).toContain('Shared One')
+    expect(((window as unknown as Record<string, unknown>).EJS_gameUrl as File).name).toBe('Shared One.chd')
+    state.route = { params: { source: 'local', id: 'g1' }, query: {} }
+  })
+
+  it('shared: a revoked code fails cleanly without loading the emulator', async () => {
+    state.route = { params: { source: 'shared', id: 'g1' }, query: { share: 'sid' } }
+    sharedMock.revoked = true
+    const wrapper = await mountSuspended(PlayPage)
+    await flushPromises()
+    await flushPromises()
+    expect(wrapper.text()).toMatch(/no longer valid/i)
+    expect(injected.scripts).toHaveLength(0)
     state.route = { params: { source: 'local', id: 'g1' }, query: {} }
   })
 
