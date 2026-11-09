@@ -29,10 +29,7 @@ export default defineNuxtConfig({
       wrangler: {
         name: 'memcard',
         routes: [{ pattern: 'memcard.devffice.com', custom_domain: true }],
-        // Keep in sync with wrangler.jsonc (used by the CLI and local dev).
-        d1_databases: [{ binding: 'DB', database_name: 'memcard', database_id: '735471db-4c18-461a-a4ce-99e1681c8b86', migrations_dir: 'migrations' }],
-        r2_buckets: [{ binding: 'R2', bucket_name: 'memcard-libraries' }],
-        ratelimits: [{ name: 'RL_CREATE', namespace_id: '1001', simple: { limit: 5, period: 60 } }],
+        // D1 / R2 / rate-limit bindings come from wrangler.jsonc, which Nitro merges in.
       },
     },
   },
