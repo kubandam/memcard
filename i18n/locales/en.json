@@ -1,3 +1,21 @@
 {
-  "site": { "name": "Memcard" }
+  "site": { "name": "Memcard" },
+  "nav": { "label": "Main", "home": "Library", "settings": "Settings", "about": "About" },
+  "theme": { "label": "Theme", "dark": "Dark", "grey": "Grey" },
+  "footer": { "source": "Source code", "emulator": "Powered by EmulatorJS" },
+  "about": {
+    "title": "About",
+    "whatTitle": "What this is",
+    "what": "{site} plays PS1 games in your browser. Nothing to install: open the page, add a game, use the keyboard or a controller.",
+    "rulesTitle": "Content rules",
+    "rule1": "Only games that may legally be shared are hosted here: homebrew, freeware and demos with explicit permission. No commercial games and no BIOS files, ever.",
+    "rule2": "Games you add yourself stay in your browser. They are never uploaded and we never see their names.",
+    "rule3": "You can optionally add a BIOS file you own. It is stored in your browser like a game and never leaves it.",
+    "rule4": "This site is not affiliated with or endorsed by Sony. \"PS1\" is used only to describe compatibility.",
+    "licencesTitle": "Licences",
+    "licence1": "This website is free software under the GNU GPL-3.0.",
+    "licence2": "Emulation by EmulatorJS (GPL-3.0) running the libretro pcsx_rearmed core (GPL-2.0).",
+    "licence3": "Fonts: Archivo Narrow, Inter and Chakra Petch under the SIL Open Font License 1.1.",
+    "sourceTitle": "Source code"
+  }
 }

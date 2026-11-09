@@ -3,6 +3,7 @@ export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
   devtools: { enabled: true },
   modules: ['@nuxtjs/i18n'],
+  components: [{ path: '~/components', pathPrefix: false }],
   css: ['~/assets/css/tokens.css', '~/assets/css/fonts.css', '~/assets/css/base.css'],
   i18n: {
     locales: [{ code: 'en', language: 'en-US', file: 'en.json' }],

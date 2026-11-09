@@ -1,0 +1,47 @@
+/* Design tokens. Dark = "Shelf" (default). Grey = console-shell theme. Components never hard-code colours. */
+:root {
+  --bg: #0e0e0e;
+  --bg-panel: #161616;
+  --line: #2a2a2a;
+  --line-strong: #333;
+  --fg: #f2f2f2;
+  --fg-muted: rgba(242, 242, 242, 0.65);
+  --accent: #e2231a;
+  --dot-red: #e2231a;
+  --dot-yellow: #f5c518;
+  --dot-blue: #1d6fd1;
+  --dot-green: #1fa84a;
+  --font-display: 'Archivo Narrow', 'Helvetica Neue', Arial, sans-serif;
+  --font-body: 'Inter', system-ui, sans-serif;
+  --display-weight: 700;
+  --display-style: normal;
+  --label-weight: 300;
+  --label-tracking: 0.18em;
+  --radius: 4px;
+  --tile-shadow: 0 0 0 1px var(--line-strong), 0 10px 30px rgba(0, 0, 0, 0.6);
+  --spine: #000;
+  --header-bg: transparent;
+  --focus: #f2f2f2;
+  --ejs-color: #f2f2f2;
+  --boot-bg: radial-gradient(ellipse at 50% 15%, #26262e 0%, #0b0b10 55%, #000 100%);
+}
+
+:root[data-theme='grey'] {
+  --bg: linear-gradient(#d9d6cd, #c6c3b9);
+  --bg-panel: #cfccc3;
+  --line: #a9a69d;
+  --line-strong: #9b988f;
+  --fg: #1f1f1f;
+  --fg-muted: #555;
+  --font-display: 'Chakra Petch', system-ui, sans-serif;
+  --font-body: 'Chakra Petch', system-ui, sans-serif;
+  --display-style: italic;
+  --label-weight: 600;
+  --label-tracking: 0.1em;
+  --radius: 8px;
+  --tile-shadow: inset 0 1px 0 #fff, 0 3px 0 #9b988f;
+  --spine: #a9a69d;
+  --header-bg: #b9b6ad;
+  --focus: #1f1f1f;
+  --ejs-color: #1f1f1f;
+}
