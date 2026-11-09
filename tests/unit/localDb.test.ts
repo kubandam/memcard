@@ -14,6 +14,9 @@ import {
   listGames,
   renameGame,
   setCover,
+  putUploadState,
+  getUploadStates,
+  deleteUploadState,
   setSetting,
   touchLastPlayed,
 } from '../../app/utils/localDb'
@@ -113,6 +116,26 @@ describe('localDb', () => {
     expect(await getBlob(first)).toBeUndefined()
     await deleteGame(g.id)
     expect(await getBlob(second)).toBeUndefined()
+  })
+
+  it('upgrades a v1 database to v2 keeping games, and stores upload states', async () => {
+    const { openDB } = await import('idb')
+    const v1 = await openDB('memcard', 1, {
+      upgrade(db) {
+        db.createObjectStore('games', { keyPath: 'id' }).createIndex('lastPlayedAt', 'lastPlayedAt')
+        db.createObjectStore('blobs')
+        db.createObjectStore('settings')
+      },
+    })
+    await v1.put('games', { id: 'old', title: 'Old', files: [], createdAt: 1, lastPlayedAt: null })
+    v1.close()
+    expect((await getGame('old'))?.title).toBe('Old')
+    const state = { id: 's1', libraryId: 'lib', objectKey: 'k', uploadId: 'u', parts: [{ partNumber: 1, etag: 'e' }], fileName: 'a.bin', fileSize: 10, fileLastModified: 5 }
+    await putUploadState(state)
+    expect(await getUploadStates('lib')).toEqual([state])
+    expect(await getUploadStates('other')).toEqual([])
+    await deleteUploadState('s1')
+    expect(await getUploadStates('lib')).toEqual([])
   })
 
   it('settings round-trip', async () => {

@@ -1,8 +1,9 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
 import type { ClassifiedGame, GameFileRef, LocalGame } from '~~/shared/types/game'
+import type { UploadState } from './cloudUpload'
 
 export const DB_NAME = 'memcard'
-export const DB_VERSION = 1
+export const DB_VERSION = 2
 
 interface MemcardDb extends DBSchema {
   games: {
@@ -17,6 +18,11 @@ interface MemcardDb extends DBSchema {
   settings: {
     key: string
     value: unknown
+  }
+  uploads: {
+    key: string
+    value: UploadState
+    indexes: { libraryId: string }
   }
 }
 
@@ -37,11 +43,16 @@ let dbPromise: Promise<IDBPDatabase<MemcardDb>> | null = null
 export function openDb(): Promise<IDBPDatabase<MemcardDb>> {
   if (!dbPromise) {
     dbPromise = openDB<MemcardDb>(DB_NAME, DB_VERSION, {
-      upgrade(db) {
-        const games = db.createObjectStore('games', { keyPath: 'id' })
-        games.createIndex('lastPlayedAt', 'lastPlayedAt')
-        db.createObjectStore('blobs')
-        db.createObjectStore('settings')
+      upgrade(db, oldVersion) {
+        if (oldVersion < 1) {
+          const games = db.createObjectStore('games', { keyPath: 'id' })
+          games.createIndex('lastPlayedAt', 'lastPlayedAt')
+          db.createObjectStore('blobs')
+          db.createObjectStore('settings')
+        }
+        if (oldVersion < 2) {
+          db.createObjectStore('uploads', { keyPath: 'id' }).createIndex('libraryId', 'libraryId')
+        }
       },
     }).catch((err) => {
       dbPromise = null
@@ -185,8 +196,8 @@ export async function deleteSetting(key: string): Promise<void> {
 
 export async function clearAll(): Promise<void> {
   const db = await openDb()
-  const tx = db.transaction(['games', 'blobs', 'settings'], 'readwrite')
-  await Promise.all([tx.objectStore('games').clear(), tx.objectStore('blobs').clear(), tx.objectStore('settings').clear(), tx.done])
+  const tx = db.transaction(['games', 'blobs', 'settings', 'uploads'], 'readwrite')
+  await Promise.all([tx.objectStore('games').clear(), tx.objectStore('blobs').clear(), tx.objectStore('settings').clear(), tx.objectStore('uploads').clear(), tx.done])
 }
 
 export async function estimateStorage(): Promise<{ usage: number; quota: number } | null> {
@@ -208,4 +219,20 @@ export async function requestPersist(): Promise<boolean> {
   } catch {
     return false
   }
+}
+
+/** Resumable cloud-upload state (one row per object being uploaded). */
+export async function putUploadState(state: UploadState): Promise<void> {
+  const db = await openDb()
+  await db.put('uploads', structuredClone(state))
+}
+
+export async function getUploadStates(libraryId: string): Promise<UploadState[]> {
+  const db = await openDb()
+  return db.getAllFromIndex('uploads', 'libraryId', libraryId)
+}
+
+export async function deleteUploadState(id: string): Promise<void> {
+  const db = await openDb()
+  await db.delete('uploads', id)
 }
