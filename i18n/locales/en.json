@@ -71,5 +71,23 @@
   },
   "warnings": {
     "largeFile": "This is a large image. The emulator keeps the whole file in memory, so low-memory devices may struggle. Converting to .chd makes it much smaller."
+  },
+  "boot": {
+    "idle": "Preparing",
+    "reading": "Reading from browser storage",
+    "packing": "Packing discs",
+    "loading": "Loading emulator",
+    "starting": "Starting",
+    "running": "Running",
+    "error": "Error"
+  },
+  "player": {
+    "title": "Player",
+    "fullscreen": "Fullscreen",
+    "controls": "Controls",
+    "library": "← Library",
+    "notFound": "Game not found",
+    "notFoundHint": "It may have been deleted, or this browser does not have it stored.",
+    "backToLibrary": "Back to library"
   }
 }
