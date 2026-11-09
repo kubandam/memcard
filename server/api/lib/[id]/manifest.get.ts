@@ -1,5 +1,5 @@
 export default defineEventHandler((event) =>
-  ownerAction(event, async ({ id, svc }) => {
+  readerAction(event, 'manifest', async ({ id, svc }) => {
     const m = await svc.getManifest(id)
     setHeader(event, 'cache-control', 'no-store')
     if (!m) {

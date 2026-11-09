@@ -1,5 +1,5 @@
 /// <reference types="@cloudflare/workers-types" />
-import type { LibraryStore } from './libraryStore'
+import type { LibraryStore, ShareListRow } from './libraryStore'
 
 /** Plain error the routes translate into an HTTP status (keeps this module free of h3). */
 export class ServiceError extends Error {
@@ -16,6 +16,8 @@ export const MAX_PART_BYTES = 17 * 1024 * 1024
 const PLAIN_PART = 16 * 1024 * 1024
 /** Unfinished multipart uploads a library may hold at once. */
 export const MAX_OPEN_UPLOADS = 8
+/** Active (not revoked) share codes one library may have. */
+export const MAX_ACTIVE_SHARES = 100
 /** R2 aborts incomplete multipart uploads after 7 days; older reservations no longer count. */
 export const MPU_TTL_MS = 7 * 24 * 3600 * 1000
 
@@ -32,6 +34,13 @@ export interface LibraryService {
   getObject(libraryId: string, key: string, range: { start: number; end: number } | null): Promise<{ body: ReadableStream | Uint8Array; size: number; contentRange?: string; length: number }>
   objectSize(libraryId: string, key: string): Promise<number | null>
   deleteObject(libraryId: string, key: string): Promise<void>
+  createShare(libraryId: string, input: { shareId: string; gameId: string | null; allowedKeys: string[]; wrapped: Uint8Array }): Promise<void>
+  listShares(libraryId: string): Promise<Omit<ShareListRow, 'libraryId' | 'allowedKeys'>[]>
+  revokeShare(libraryId: string, shareId: string): Promise<void>
+  /** Public: active share → what the recipient needs to unwrap it. 404 when unknown or revoked. */
+  lookupShare(shareId: string): Promise<{ libraryId: string; gameId: string | null; wrapped: Uint8Array }>
+  /** 404 unless the share is active, belongs to `libraryId`, and covers `what`. */
+  authorizeShare(shareId: string, libraryId: string, what: { manifest: true } | { key: string }): Promise<void>
 }
 
 export function createLibraryService(deps: { store: LibraryStore; r2: R2Bucket; hardLimit: number; libraryLimit?: number; now?: () => number }): LibraryService {
@@ -160,6 +169,33 @@ export function createLibraryService(deps: { store: LibraryStore; r2: R2Bucket; 
     async deleteObject(libraryId, key) {
       await r2.delete(objectPath(libraryId, key))
       await store.removeObject(libraryId, key)
+    },
+
+    async createShare(libraryId, input) {
+      if ((await store.countActiveShares(libraryId)) >= MAX_ACTIVE_SHARES) throw new ServiceError(429, 'too-many-shares')
+      const res = await store.createShare({ id: input.shareId, libraryId, gameId: input.gameId, allowedKeys: input.allowedKeys, wrapped: input.wrapped })
+      if (res === 'exists') throw new ServiceError(409)
+    },
+
+    async listShares(libraryId) {
+      return (await store.listShares(libraryId)).map(({ id, gameId, createdAt, revokedAt }) => ({ id, gameId, createdAt, revokedAt }))
+    },
+
+    async revokeShare(libraryId, shareId) {
+      if (!(await store.revokeShare(libraryId, shareId))) throw new ServiceError(404)
+    },
+
+    async lookupShare(shareId) {
+      const row = await store.getShare(shareId)
+      if (!row || row.revokedAt !== null) throw new ServiceError(404)
+      return { libraryId: row.libraryId, gameId: row.gameId, wrapped: row.wrapped }
+    },
+
+    async authorizeShare(shareId, libraryId, what) {
+      const row = await store.getShare(shareId)
+      if (!row || row.revokedAt !== null || row.libraryId !== libraryId) throw new ServiceError(404)
+      if (row.gameId === null) return
+      if ('manifest' in what || !row.allowedKeys.includes(what.key)) throw new ServiceError(404)
     },
   }
 }

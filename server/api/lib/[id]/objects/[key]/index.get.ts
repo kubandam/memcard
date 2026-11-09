@@ -1,5 +1,5 @@
 export default defineEventHandler((event) =>
-  ownerAction(event, async ({ id, key, svc }) => {
+  readerAction(event, 'object', async ({ id, key, svc }) => {
     const m = /^bytes=(\d+)-(\d+)$/.exec(getHeader(event, 'range') ?? '')
     const res = await svc.getObject(id, key!, m ? { start: Number(m[1]), end: Number(m[2]) } : null)
     setHeader(event, 'accept-ranges', 'bytes')
