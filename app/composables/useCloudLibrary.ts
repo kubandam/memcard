@@ -182,7 +182,8 @@ export function useCloudLibrary() {
     return parsed.kind === 'recovery' ? parsed.kRoot : deriveRootKey(parsed.password.trim())
   }
 
-  async function openWithRoot(kRoot: Uint8Array, onDevice?: boolean): Promise<boolean> {
+  /** 'missing' = no library for this key (safe to forget it); 'error' = network/server trouble (keep it). */
+  async function openWithRoot(kRoot: Uint8Array, onDevice?: boolean): Promise<'ok' | 'missing' | 'error'> {
     s.status.value = 'opening'
     s.notice.value = null
     try {
@@ -190,19 +191,23 @@ export function useCloudLibrary() {
       await loadManifest()
       await remember(kRoot, keys, onDevice)
       await refreshUsage()
-      return true
+      return 'ok'
     } catch (err) {
       reset()
-      if (err instanceof ApiError && err.status === 404) s.notice.value = { kind: 'error', key: 'cloud.noLibrary' }
-      else if (err instanceof ApiError) s.notice.value = { kind: 'error', key: 'cloud.network' }
-      else s.notice.value = { kind: 'error', key: 'cloud.cannotDecrypt' }
-      return false
+      if (err instanceof ApiError && err.status === 404) {
+        s.notice.value = { kind: 'error', key: 'cloud.noLibrary' }
+        return 'missing'
+      }
+      // AES-GCM failure is an OperationError; anything else (TypeError from fetch, 5xx, 429) is the network.
+      const decryptFailed = (err as { name?: string })?.name === 'OperationError'
+      s.notice.value = { kind: 'error', key: decryptFailed ? 'cloud.cannotDecrypt' : 'cloud.network' }
+      return 'error'
     }
   }
 
   async function open(secret: string, opts: { remember?: boolean } = {}): Promise<boolean> {
     s.status.value = 'opening'
-    return openWithRoot(await rootFromSecret(secret), opts.remember ?? false)
+    return (await openWithRoot(await rootFromSecret(secret), opts.remember ?? false)) === 'ok'
   }
 
   async function create(password: string, invite: string, opts: { remember?: boolean } = {}): Promise<{ recoveryKey: string } | null> {
@@ -228,39 +233,47 @@ export function useCloudLibrary() {
     }
   }
 
-  function close() {
+  async function close(): Promise<void> {
     s.recoveryKey.value = null
     s.remembered.value = false
     session()?.removeItem(SESSION_KEY)
-    void deleteSetting(REMEMBER_KEY).catch(() => undefined)
+    // Reset synchronously so running uploads see the new generation right away.
     reset()
+    await deleteSetting(REMEMBER_KEY).catch(() => undefined)
   }
 
   async function restore(): Promise<void> {
     if (s.status.value === 'open') return
+    const decode = (v: string): Uint8Array | null => {
+      try {
+        const k = fromBase64Url(v)
+        return k.length === 32 ? k : null
+      } catch {
+        return null
+      }
+    }
     const fromSession = session()?.getItem(SESSION_KEY)
     if (fromSession) {
-      try {
-        const kRoot = fromBase64Url(fromSession)
-        if (kRoot.length === 32 && (await openWithRoot(kRoot))) {
-          s.remembered.value = !!(await getSetting<string>(REMEMBER_KEY).catch(() => undefined))
-          return
-        }
-      } catch {
-        // fall through
+      const kRoot = decode(fromSession)
+      const res = kRoot ? await openWithRoot(kRoot) : 'missing'
+      if (res === 'ok') {
+        s.remembered.value = !!(await getSetting<string>(REMEMBER_KEY).catch(() => undefined))
+        return
       }
+      // Keep the key through network trouble; forget it only when it is unusable or its library is gone.
+      if (res === 'error') return
       session()?.removeItem(SESSION_KEY)
     }
     const fromDevice = await getSetting<string>(REMEMBER_KEY).catch(() => undefined)
     if (!fromDevice) return
-    const kRoot = fromBase64Url(fromDevice)
-    if (kRoot.length !== 32 || !(await openWithRoot(kRoot))) {
-      // The library is gone or the key is unusable: do not keep trying it on every visit.
+    const kRoot = decode(fromDevice)
+    const res = kRoot ? await openWithRoot(kRoot) : 'missing'
+    if (res === 'missing') {
       await deleteSetting(REMEMBER_KEY).catch(() => undefined)
       s.remembered.value = false
       return
     }
-    s.remembered.value = true
+    s.remembered.value = res === 'ok'
   }
 
   /** Applies `mutate` to the manifest and saves it; on a concurrent change (412) reloads and retries once. */

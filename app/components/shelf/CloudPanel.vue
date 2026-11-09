@@ -109,7 +109,7 @@ async function copy(text: string) {
         {{ t('cloud.wroteItDown') }}
       </label>
       <label class="cloud-panel__check">
-        <input v-model="stayOpen" type="checkbox" />
+        <input v-model="stayOpen" data-remember-create type="checkbox" />
         {{ t('cloud.stayOpen') }}
       </label>
       <input v-model="invite" data-invite type="text" class="field" :placeholder="t('cloud.invitePlaceholder')" :aria-label="t('cloud.invitePlaceholder')" />

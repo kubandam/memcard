@@ -219,3 +219,27 @@ describe('shared covers and restore races', () => {
     expect(fresh.libraries.value.map((l) => l.shareId)).toEqual([target])
   }, 60_000)
 })
+
+describe('remove during restore', () => {
+  beforeEach(() => {
+    globalThis.indexedDB = new IDBFactory()
+    __resetDbForTests(); __resetCloudForTests(); __resetSharedForTests(); sessionStorageShim()
+  })
+
+  it('a library removed while restore() is loading does not come back', async () => {
+    const { f, owner } = await ownerWithGame('Gone')
+    const code = await owner.shareLibrary()
+    await useSharedLibraries().redeem(code)
+    __resetSharedForTests()
+    let release!: () => void
+    const gate = new Promise<void>((r) => (release = r))
+    __setShareTransport({ lookup: async (id) => (await gate, f.shareTransport.lookup(id)), reader: f.shareTransport.reader })
+    const fresh = useSharedLibraries()
+    const restoring = fresh.restore()
+    const shareId = (await deriveShareKeys(parseShareCode(code)!)).shareId
+    await fresh.remove(shareId)
+    release()
+    await restoring
+    expect(fresh.libraries.value).toEqual([])
+  }, 60_000)
+})

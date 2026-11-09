@@ -2,7 +2,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises } from '@vue/test-utils'
 import { mountSuspended } from '@nuxt/test-utils/runtime'
+import { mockNuxtImport } from '@nuxt/test-utils/runtime'
 import SettingsPage from '../../app/pages/settings.vue'
+
+const cloudClose = vi.hoisted(() => vi.fn())
+mockNuxtImport('useCloudLibrary', () => () => ({ close: cloudClose }))
 
 const db = vi.hoisted(() => ({
   settings: new Map<string, unknown>(),
@@ -55,6 +59,8 @@ describe('settings page', () => {
     await wrapper.find('[data-clear]').trigger('click')
     await flushPromises()
     expect(db.clearAll).toHaveBeenCalledTimes(1)
+    // The open online library in this tab is closed too (its key is in sessionStorage).
+    expect(cloudClose).toHaveBeenCalled()
   })
 
   it('shows storage usage and default key help', async () => {

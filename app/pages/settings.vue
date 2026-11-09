@@ -66,6 +66,8 @@ async function onClear() {
     return
   }
   confirmingClear.value = false
+  // The open online library's key also lives in this tab; clearing data must forget it too.
+  await useCloudLibrary().close()
   await clearAll()
   notice.value = { kind: 'info', key: 'settings.cleared' }
   await load()

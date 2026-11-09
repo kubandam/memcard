@@ -318,3 +318,33 @@ describe('useCloudLibrary — stay open on this PC', () => {
     expect(await getSetting('cloudKeyRemembered')).toBeUndefined()
   }, 30_000)
 })
+
+describe('useCloudLibrary — remembered key and flaky networks', () => {
+  let session: Map<string, string>
+  beforeEach(() => {
+    globalThis.indexedDB = new IDBFactory()
+    __resetDbForTests()
+    __resetCloudForTests()
+    session = sessionStorageShim()
+  })
+
+  it('a network error during restore keeps both the session and the device key', async () => {
+    const f = createFakeCloudApi()
+    __setCloudApiFactory(() => f.api)
+    await useCloudLibrary().create(PASS, 'good', { remember: true })
+    __resetCloudForTests()
+    __setCloudApiFactory(() => ({ ...f.api, getManifest: async () => { throw new TypeError('Failed to fetch') } }))
+    const again = useCloudLibrary()
+    await again.restore()
+    expect(again.status.value).toBe('closed')
+    expect(again.notice.value?.key).toBe('cloud.network')
+    expect(session.get(SESSION_KEY)).toBeTruthy()
+    expect(await getSetting('cloudKeyRemembered')).toBeTruthy()
+    // Back online: it opens again without the passphrase.
+    __resetCloudForTests()
+    __setCloudApiFactory(() => f.api)
+    const third = useCloudLibrary()
+    await third.restore()
+    expect(third.status.value).toBe('open')
+  }, 30_000)
+})

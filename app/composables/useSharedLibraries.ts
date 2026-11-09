@@ -144,21 +144,23 @@ export function useSharedLibraries() {
   }
 
   /** Replaces or adds loaded entries without dropping ones that appeared meanwhile (e.g. a fresh redeem). */
-  function merge(loaded: SharedLibrary[]) {
+  async function merge(loaded: SharedLibrary[]) {
+    // Re-read what is saved now: a library Removed while we were loading must not come back.
+    const stillSaved = new Set((await readSaved()).map((x) => x.shareId))
     const byId = new Map(s.libraries.value.map((l) => [l.shareId, l]))
-    for (const l of loaded) byId.set(l.shareId, l)
-    s.libraries.value = [...byId.values()]
+    for (const l of loaded) if (stillSaved.has(l.shareId)) byId.set(l.shareId, l)
+    s.libraries.value = [...byId.values()].filter((l) => stillSaved.has(l.shareId))
   }
 
   async function restore(): Promise<void> {
     const saved = await readSaved()
-    merge(await Promise.all(saved.map(loadLibrary)))
+    await merge(await Promise.all(saved.map(loadLibrary)))
   }
 
   /** Loads just one saved library (the player only needs the one in ?share). */
   async function restoreOne(shareId: string): Promise<void> {
     const saved = (await readSaved()).find((x) => x.shareId === shareId)
-    if (saved) merge([await loadLibrary(saved)])
+    if (saved) await merge([await loadLibrary(saved)])
   }
 
   const covers = new Map<string, string>()
