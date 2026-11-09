@@ -159,3 +159,28 @@ describe('multipart objects', () => {
     expect((await store.getLibrary('liba'))!.bytesUsed).toBe(0)
   })
 })
+
+describe('saves', () => {
+  const SK = 'abcdefghjkmnpqrstvwxyz9'
+  it('put/get/overwrite counts the size once; delete frees it; missing is 404', async () => {
+    const { svc, store } = await setup()
+    expect(await code(svc.getSave('liba', SK))).toBe(404)
+    await svc.putSave('liba', SK, new Uint8Array(100))
+    await svc.putSave('liba', SK, new Uint8Array(150))
+    expect([...(await svc.getSave('liba', SK))].length).toBe(150)
+    expect((await store.getLibrary('liba'))!.bytesUsed).toBe(150)
+    expect(await code(svc.getSave('libb', SK))).toBe(404)
+    await svc.deleteSave('liba', SK)
+    expect(await code(svc.getSave('liba', SK))).toBe(404)
+    expect((await store.getLibrary('liba'))!.bytesUsed).toBe(0)
+  })
+  it('refuses empty or oversized saves and respects the quota', async () => {
+    const { svc } = await setup(2 * MiB)
+    expect(await code(svc.putSave('liba', SK, new Uint8Array(0)))).toBe(400)
+    expect(await code(svc.putSave('liba', SK, new Uint8Array(MiB + 1)))).toBe(400)
+    const { uploadId } = await svc.createUpload('liba', K1)
+    const p = await svc.uploadPart('liba', K1, uploadId, 1, new Uint8Array(2 * MiB - 10))
+    await svc.completeUpload('liba', K1, uploadId, [{ partNumber: 1, etag: p.etag }])
+    expect(await code(svc.putSave('liba', SK, new Uint8Array(100)))).toBe(413)
+  })
+})

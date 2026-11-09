@@ -23,6 +23,9 @@ export const MPU_TTL_MS = 7 * 24 * 3600 * 1000
 
 const manifestPath = (libraryId: string, version: string) => `lib/${libraryId}/manifest/${version}`
 export const objectPath = (libraryId: string, key: string) => `lib/${libraryId}/obj/${key}`
+const savePath = (libraryId: string, saveKey: string) => `lib/${libraryId}/save/${saveKey}`
+/** Largest encrypted memory card accepted (PS1 cards are 128 KiB). */
+export const MAX_SAVE_BYTES = 1024 * 1024
 
 export interface LibraryService {
   getManifest(libraryId: string): Promise<{ bytes: Uint8Array; etag: string } | null>
@@ -41,6 +44,9 @@ export interface LibraryService {
   lookupShare(shareId: string): Promise<{ libraryId: string; gameId: string | null; wrapped: Uint8Array }>
   /** 404 unless the share is active, belongs to `libraryId`, and covers `what`. */
   authorizeShare(shareId: string, libraryId: string, what: { manifest: true } | { key: string }): Promise<void>
+  getSave(libraryId: string, saveKey: string): Promise<Uint8Array>
+  putSave(libraryId: string, saveKey: string, body: Uint8Array): Promise<void>
+  deleteSave(libraryId: string, saveKey: string): Promise<void>
 }
 
 export function createLibraryService(deps: { store: LibraryStore; r2: R2Bucket; hardLimit: number; libraryLimit?: number; now?: () => number }): LibraryService {
@@ -189,6 +195,29 @@ export function createLibraryService(deps: { store: LibraryStore; r2: R2Bucket; 
       const row = await store.getShare(shareId)
       if (!row || row.revokedAt !== null) throw new ServiceError(404)
       return { libraryId: row.libraryId, gameId: row.gameId, wrapped: row.wrapped }
+    },
+
+    async getSave(libraryId, saveKey) {
+      const obj = await r2.get(savePath(libraryId, saveKey))
+      if (!obj) throw new ServiceError(404)
+      return new Uint8Array(await obj.arrayBuffer())
+    },
+
+    async putSave(libraryId, saveKey, body) {
+      if (body.length === 0 || body.length > MAX_SAVE_BYTES) throw new ServiceError(400)
+      const accountKey = `save:${saveKey}`
+      const previous = (await store.listObjects(libraryId)).find((o) => o.key === accountKey)?.size ?? 0
+      const delta = body.length - previous
+      const lib = await store.getLibrary(libraryId)
+      if ((await store.totalBytes()) + (await store.pendingBytes(since())) + delta > hardLimit) throw new ServiceError(413, 'quota')
+      if ((lib?.bytesUsed ?? 0) + (await store.pendingBytes(since(), libraryId)) + delta > libraryLimit) throw new ServiceError(413, 'quota')
+      await r2.put(savePath(libraryId, saveKey), body)
+      await store.addObject(libraryId, accountKey, body.length)
+    },
+
+    async deleteSave(libraryId, saveKey) {
+      await r2.delete(savePath(libraryId, saveKey))
+      await store.removeObject(libraryId, `save:${saveKey}`)
     },
 
     async authorizeShare(shareId, libraryId, what) {

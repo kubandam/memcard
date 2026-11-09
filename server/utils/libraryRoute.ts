@@ -55,3 +55,8 @@ export async function readerAction<T>(event: H3Event, what: 'manifest' | 'object
 export function routeUploadId(event: H3Event): string {
   return decodeURIComponent(getRouterParam(event, 'uploadId')!)
 }
+
+/** `:saveKey` route param, same shape as object keys; anything else is a 404. */
+export function saveKeyParam(event: H3Event): string {
+  return requireObjectKey(getRouterParam(event, 'saveKey') ?? '')
+}
