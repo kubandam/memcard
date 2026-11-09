@@ -16,6 +16,17 @@ export interface UploadState {
   fileLastModified: number
 }
 
+/**
+ * Thrown when a saved resume state does not belong to the given file. Continuing would encrypt
+ * different plaintext under the same key and counter nonces, which breaks AES-GCM.
+ */
+export class ResumeMismatchError extends Error {
+  constructor() {
+    super('This file does not match the interrupted upload')
+    this.name = 'ResumeMismatchError'
+  }
+}
+
 export interface UploadOptions {
   libraryId: string
   resume?: UploadState
@@ -35,6 +46,13 @@ export async function uploadObject(api: CloudApi, blob: Blob, kGame: Uint8Array,
   const totalParts = Math.max(1, Math.ceil(size / PART_SIZE))
   const key = await deriveObjectKey(kGame, objectKey)
   const file = blob as Partial<File>
+
+  if (opts.resume) {
+    const r = opts.resume
+    if (r.objectKey !== objectKey || r.fileSize !== size || r.fileLastModified !== (file.lastModified ?? 0) || (r.fileName && file.name !== undefined && r.fileName !== file.name)) {
+      throw new ResumeMismatchError()
+    }
+  }
 
   const state: UploadState = opts.resume ?? {
     id: crypto.randomUUID(),

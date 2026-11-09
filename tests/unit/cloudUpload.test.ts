@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
-import { PART_SIZE, uploadObject, type UploadState } from '../../app/utils/cloudUpload'
+import { PART_SIZE, ResumeMismatchError, uploadObject, type UploadState } from '../../app/utils/cloudUpload'
 import { DecryptError, downloadObject } from '../../app/utils/cloudDownload'
 import { encryptedSize, newGameKey, newObjectKey } from '../../shared/utils/chunkCrypto'
 import { createFakeCloudApi } from './fakeCloudApi'
@@ -36,12 +36,24 @@ describe('uploadObject / downloadObject', () => {
     // First attempt dies after part 1.
     let n = 0
     const flaky = { ...resumed.api, uploadPart: async (...a: Parameters<typeof resumed.api.uploadPart>) => { if (++n === 2) throw new Error('network'); return resumed.api.uploadPart(...a) } }
-    await expect(uploadObject(flaky, new Blob([plain]), kGame, key, { ...noState, saveState: async (s) => void (state = structuredClone(s)) })).rejects.toThrow('network')
+    await expect(uploadObject(flaky, new File([plain], 'p.bin', { lastModified: 7 }), kGame, key, { ...noState, saveState: async (s) => void (state = structuredClone(s)) })).rejects.toThrow('network')
     expect(state!.parts.map((p) => p.partNumber)).toEqual([1])
     resumed.calls.uploadPart.length = 0
-    await uploadObject(resumed.api, new Blob([plain]), kGame, key, { ...noState, resume: state })
+    await uploadObject(resumed.api, new File([plain], 'p.bin', { lastModified: 7 }), kGame, key, { ...noState, resume: state })
     expect(resumed.calls.uploadPart).toEqual([2, 3])
     expect(await sha(resumed.objects.get(key)!)).toBe(await sha(fresh.objects.get(key)!))
+  })
+
+  it('refuses to resume with a different file (would reuse key + nonce on new plaintext)', async () => {
+    const { api } = createFakeCloudApi()
+    const kGame = newGameKey(); const key = newObjectKey()
+    const original = new File([blobOf(20 * MiB)], 'a.bin', { lastModified: 1000 })
+    const state: UploadState = { id: 's', libraryId: 'lib', objectKey: key, uploadId: 'u1', parts: [{ partNumber: 1, etag: 'p1' }], fileName: 'a.bin', fileSize: original.size, fileLastModified: 1000 }
+    const otherSize = new File([blobOf(21 * MiB)], 'a.bin', { lastModified: 1000 })
+    const otherTime = new File([blobOf(20 * MiB)], 'a.bin', { lastModified: 2000 })
+    await expect(uploadObject(api, otherSize, kGame, key, { ...noState, resume: state })).rejects.toBeInstanceOf(ResumeMismatchError)
+    await expect(uploadObject(api, otherTime, kGame, key, { ...noState, resume: state })).rejects.toBeInstanceOf(ResumeMismatchError)
+    await expect(uploadObject(api, original, kGame, newObjectKey(), { ...noState, resume: state })).rejects.toBeInstanceOf(ResumeMismatchError)
   })
 
   it('part size is 4 chunks', () => {
