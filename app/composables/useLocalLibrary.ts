@@ -1,7 +1,7 @@
-import { ref, type Ref } from 'vue'
+import { computed, ref, type Ref } from 'vue'
 import type { ClassifiedGame, LocalGame } from '~~/shared/types/game'
 import { classifyFiles } from '~/utils/gameFiles'
-import { StorageError, addGame, deleteGame, estimateStorage, getBlob, listGames, renameGame, requestPersist, setCover } from '~/utils/localDb'
+import { StorageError, addGame, deleteGame, estimateStorage, getBlob, getSetting, listGames, renameGame, requestPersist, setCover, setSetting } from '~/utils/localDb'
 import { THUMBNAIL_RAW_BASE, pickCover } from '~~/shared/utils/coverMatch'
 
 export interface LibraryNotice {
@@ -30,6 +30,11 @@ export function useLocalLibrary() {
   const coverUrls = ref<Record<string, string>>({})
   const coverBusy = ref<string | null>(null)
   let thumbnailIndex: string[] | null = null
+  /** null = not decided yet (ask once), true/false = remembered choice. */
+  const autoCovers = ref<boolean | null>(null)
+  /** Set when a game was added while auto-covers is undecided; resolved by the consent prompt. */
+  const pendingConsentFor = ref<LocalGame | null>(null)
+  const bulkBusy = ref(false)
 
   async function loadCovers(list: LocalGame[]) {
     for (const url of Object.values(coverUrls.value)) URL.revokeObjectURL(url)
@@ -48,6 +53,7 @@ export function useLocalLibrary() {
       games.value = await listGames()
       await loadCovers(games.value)
       storage.value = await estimateStorage()
+      if (autoCovers.value === null) autoCovers.value = (await getSetting<boolean>('autoCovers')) ?? null
     } catch (err) {
       notice.value = { kind: 'error', key: err instanceof StorageError && err.code === 'quota' ? 'errors.quota' : 'errors.unavailable' }
     } finally {
@@ -71,6 +77,8 @@ export function useLocalLibrary() {
       if (games.value.length === 0) await requestPersist()
       const stored = await addGame(game)
       await refresh()
+      if (autoCovers.value === true) void findCoverOnline(stored, { quiet: true })
+      else if (autoCovers.value === null) pendingConsentFor.value = stored
       return stored
     } catch (err) {
       if (err instanceof StorageError) {
@@ -122,8 +130,26 @@ export function useLocalLibrary() {
    * locally; only when a match exists is that one image URL requested from libretro-thumbnails
    * (which therefore learns the title). Never runs without the user's click.
    */
-  async function findCoverOnline(game: LocalGame) {
-    notice.value = null
+  async function decideAutoCovers(enabled: boolean) {
+    autoCovers.value = enabled
+    await setSetting('autoCovers', enabled).catch(() => undefined)
+    const pending = pendingConsentFor.value
+    pendingConsentFor.value = null
+    if (enabled && pending) await findCoverOnline(pending, { quiet: true })
+  }
+
+  /** Fetches covers for every game that has none. Sequential to be gentle on the thumbnail host. */
+  async function findMissingCovers() {
+    bulkBusy.value = true
+    try {
+      for (const game of games.value.filter((g) => !g.coverBlobKey)) await findCoverOnline(game, { quiet: true })
+    } finally {
+      bulkBusy.value = false
+    }
+  }
+
+  async function findCoverOnline(game: LocalGame, opts: { quiet?: boolean } = {}) {
+    if (!opts.quiet) notice.value = null
     coverBusy.value = game.id
     try {
       if (!thumbnailIndex) {
@@ -133,7 +159,7 @@ export function useLocalLibrary() {
       }
       const name = pickCover(game.primaryName, thumbnailIndex) ?? pickCover(game.title, thumbnailIndex)
       if (!name) {
-        notice.value = { kind: 'info', key: 'covers.notFound', params: { title: game.title } }
+        if (!opts.quiet) notice.value = { kind: 'info', key: 'covers.notFound', params: { title: game.title } }
         return
       }
       const res = await fetch(THUMBNAIL_RAW_BASE + encodeURIComponent(name))
@@ -142,11 +168,16 @@ export function useLocalLibrary() {
       await refresh()
     } catch (err) {
       if (err instanceof StorageError) notice.value = { kind: 'error', key: err.code === 'quota' ? 'errors.quota' : 'errors.unavailable' }
-      else notice.value = { kind: 'error', key: 'covers.failed' }
+      else if (!opts.quiet) notice.value = { kind: 'error', key: 'covers.failed' }
     } finally {
       coverBusy.value = null
     }
   }
 
-  return { games, loading, saving, notice, storage, sessionGame, coverUrls, coverBusy, refresh, addFiles, rename, remove, setCoverFromFile, findCoverOnline }
+  const missingCoverCount = computed(() => games.value.filter((g) => !g.coverBlobKey).length)
+
+  return {
+    games, loading, saving, notice, storage, sessionGame, coverUrls, coverBusy, bulkBusy, autoCovers, pendingConsentFor, missingCoverCount,
+    refresh, addFiles, rename, remove, setCoverFromFile, findCoverOnline, findMissingCovers, decideAutoCovers,
+  }
 }

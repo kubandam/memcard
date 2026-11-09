@@ -10,7 +10,10 @@ useHead({ title: t('home.title') })
 // Free games arrive with the M2 manifest; the section is hidden while empty.
 const freeGames = ref<LocalGame[]>([])
 
-const { games, saving, notice, storage, sessionGame, coverUrls, coverBusy, refresh, addFiles, rename, remove, setCoverFromFile, findCoverOnline } = useLocalLibrary()
+const {
+  games, saving, notice, storage, sessionGame, coverUrls, coverBusy, bulkBusy, pendingConsentFor, missingCoverCount,
+  refresh, addFiles, rename, remove, setCoverFromFile, findCoverOnline, findMissingCovers, decideAutoCovers,
+} = useLocalLibrary()
 
 const renaming = ref<string | null>(null)
 const renameValue = ref('')
@@ -60,8 +63,21 @@ async function confirmDelete(id: string) {
     <section aria-labelledby="my-games">
       <div class="library-head">
         <h2 id="my-games" class="display library-head__title">{{ t('home.myGames') }}</h2>
-        <span class="label">{{ games.length ? t('home.count', { n: games.length }) : '' }} · {{ t('home.storedLocally') }}</span>
+        <div class="library-head__meta">
+          <button v-if="missingCoverCount > 0" type="button" data-find-all-covers class="link-button label" :title="t('home.findCoverHint')" :disabled="bulkBusy" @click="findMissingCovers">
+            {{ bulkBusy ? t('home.findingCover') : t('home.findAllCovers', { n: missingCoverCount }) }}
+          </button>
+          <span class="label">{{ games.length ? t('home.count', { n: games.length }) : '' }} · {{ t('home.storedLocally') }}</span>
+        </div>
       </div>
+
+      <Notice v-if="pendingConsentFor" kind="info" data-auto-covers>
+        {{ t('home.autoCoversAsk') }}
+        <span class="consent-actions">
+          <button type="button" data-accept class="link-button label" @click="decideAutoCovers(true)">{{ t('home.autoCoversYes') }}</button>
+          <button type="button" data-decline class="link-button label" @click="decideAutoCovers(false)">{{ t('home.autoCoversNo') }}</button>
+        </span>
+      </Notice>
 
       <Notice v-if="notice" :kind="notice.kind">
         {{ t(notice.key, notice.params ?? {}) }}
@@ -119,6 +135,18 @@ async function confirmDelete(id: string) {
 .library-head__title {
   margin: 0;
   font-size: 34px;
+}
+
+.library-head__meta {
+  display: flex;
+  gap: 18px;
+  align-items: baseline;
+}
+
+.consent-actions {
+  display: inline-flex;
+  gap: 14px;
+  margin-left: 12px;
 }
 
 .link-button {

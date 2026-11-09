@@ -13,26 +13,40 @@ export function normalizeGameName(name: string): string {
     .trim()
 }
 
-const REGION_RANK = ['(usa)', '(world)', '(europe)', '(japan)']
+const REGIONS = ['usa', 'world', 'europe', 'japan', 'germany', 'france', 'spain', 'italy', 'australia', 'asia', 'korea'] as const
+const DEFAULT_RANK = ['usa', 'world', 'europe', 'japan']
 
-function regionRank(name: string): number {
+/** The region named in a No-Intro/Redump style file name, e.g. "(Europe)". */
+export function regionOf(name: string): string | null {
   const lower = name.toLowerCase()
-  const i = REGION_RANK.findIndex((r) => lower.includes(r))
-  return i === -1 ? REGION_RANK.length : i
+  for (const region of REGIONS) if (lower.includes(`(${region})`) || lower.includes(`(${region},`) || lower.includes(`, ${region})`)) return region
+  return null
+}
+
+function rankBy(preferred: string | null) {
+  const order = preferred ? [preferred, ...DEFAULT_RANK.filter((r) => r !== preferred)] : DEFAULT_RANK
+  const rank = (name: string) => {
+    const lower = name.toLowerCase()
+    const i = order.findIndex((r) => lower.includes(`(${r})`) || lower.includes(`(${r},`) || lower.includes(`, ${r})`))
+    return i === -1 ? order.length : i
+  }
+  return (a: string, b: string) => rank(a) - rank(b)
 }
 
 /**
- * Picks the best thumbnail file name for a game title: exact normalized match first (USA preferred),
- * then a unique prefix match. Returns null when nothing is clear enough to use without asking.
+ * Picks the best thumbnail file name for a game title or file name: exact normalized match first,
+ * preferring the region named in the input (then USA, World, Europe, Japan), then a unique prefix
+ * match. Returns null when nothing is clear enough to use without asking.
  */
 export function pickCover(title: string, names: string[]): string | null {
   const wanted = normalizeGameName(title)
   if (!wanted) return null
+  const byRegion = rankBy(regionOf(title))
   const exact = names.filter((n) => normalizeGameName(n) === wanted)
-  if (exact.length) return exact.sort((a, b) => regionRank(a) - regionRank(b))[0]!
+  if (exact.length) return exact.sort(byRegion)[0]!
   const prefix = names.filter((n) => normalizeGameName(n).startsWith(`${wanted} `))
   const distinctTitles = new Set(prefix.map((n) => normalizeGameName(n)))
-  if (distinctTitles.size === 1) return prefix.sort((a, b) => regionRank(a) - regionRank(b))[0]!
+  if (distinctTitles.size === 1) return prefix.sort(byRegion)[0]!
   return null
 }
 

@@ -49,7 +49,11 @@
     "cover": "Cover",
     "findCover": "Find cover",
     "findingCover": "Finding…",
-    "findCoverHint": "Looks up box art on libretro-thumbnails. Sends this game's title to that service; nothing else leaves your browser."
+    "findCoverHint": "Looks up box art on libretro-thumbnails. Sends this game's title to that service; nothing else leaves your browser.",
+    "findAllCovers": "Find {n} missing covers",
+    "autoCoversAsk": "Find box art automatically for games you add? This sends each game's title to libretro-thumbnails; nothing else leaves your browser.",
+    "autoCoversYes": "Yes, always",
+    "autoCoversNo": "No"
   },
   "tile": {
     "play": "Play {title}",

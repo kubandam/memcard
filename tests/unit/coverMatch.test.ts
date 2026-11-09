@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { normalizeGameName, pickCover, parseThumbnailIndex } from '../../shared/utils/coverMatch'
+import { normalizeGameName, pickCover, parseThumbnailIndex, regionOf } from '../../shared/utils/coverMatch'
+
+describe('regionOf', () => {
+  it('reads a known region group from a file name', () => {
+    expect(regionOf('Crash Bandicoot (Europe) (No EDC).7z')).toBe('europe')
+    expect(regionOf('Spider-Man.7z')).toBeNull()
+  })
+})
 
 const NAMES = [
   'Looney Tunes - Sheep Raider (USA) (En,Fr,Es,Pt).png',
@@ -26,6 +33,13 @@ describe('pickCover', () => {
   it('prefers USA then Europe when several regions match', () => {
     expect(pickCover('Looney Tunes Racing', NAMES)).toBe('Looney Tunes Racing (USA) (En,Fr,Es).png')
   })
+  it('honours the region in the source file name', () => {
+    expect(pickCover('Looney Tunes Racing (Europe).7z', NAMES)).toBe('Looney Tunes Racing (Europe) (En,Fr,De,Es,It).png')
+    expect(pickCover('Crash Bandicoot (Europe) (No EDC).7z', [...NAMES, 'Crash Bandicoot (Europe).png'])).toBe('Crash Bandicoot (Europe).png')
+    // Region hint that has no cover → fall back to the usual order.
+    expect(pickCover('Looney Tunes Racing (Japan).chd', NAMES)).toBe('Looney Tunes Racing (USA) (En,Fr,Es).png')
+  })
+
   it('falls back to a unique prefix match, otherwise null', () => {
     expect(pickCover('Crash Bandicoot 3', NAMES)).toBe('Crash Bandicoot 3 - Warped (USA).png')
     expect(pickCover('Crash', NAMES)).toBeNull()

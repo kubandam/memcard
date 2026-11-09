@@ -10,6 +10,7 @@ const state = vi.hoisted(() => ({
   games: [] as LocalGame[],
   addGame: vi.fn(),
   setCover: vi.fn(async () => {}),
+  settings: new Map<string, unknown>(),
 }))
 
 vi.mock('../../app/utils/localDb', async (importOriginal) => {
@@ -22,8 +23,18 @@ vi.mock('../../app/utils/localDb', async (importOriginal) => {
     requestPersist: vi.fn(async () => true),
     setCover: state.setCover,
     getBlob: vi.fn(async () => new Blob([new Uint8Array(2)], { type: 'image/png' })),
+    getSetting: vi.fn(async (k: string) => state.settings.get(k)),
+    setSetting: vi.fn(async (k: string, v: unknown) => void state.settings.set(k, v)),
   }
 })
+
+function mockCoverFetch() {
+  return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+    const url = String(input)
+    if (url.includes('/api/covers')) return new Response(JSON.stringify({ names: ['Crash Bandicoot (USA).png', 'Spyro the Dragon (USA).png'] }), { headers: { 'content-type': 'application/json' } })
+    return new Response(new Uint8Array(8), { headers: { 'content-type': 'image/png' } })
+  })
+}
 
 const file = (name: string, size = 16) => {
   const f = new File([new Uint8Array(Math.min(size, 16))], name)
@@ -41,6 +52,8 @@ async function dropFiles(wrapper: Awaited<ReturnType<typeof mountSuspended>>, fi
 describe('index page', () => {
   beforeEach(() => {
     state.games = []
+    state.settings.clear()
+    state.setCover.mockClear()
     state.addGame.mockReset()
     state.addGame.mockImplementation(async (g: ClassifiedGame): Promise<LocalGame> => ({
       id: 'new',
@@ -91,6 +104,59 @@ describe('index page', () => {
     fetchSpy.mockRestore()
   })
 
+  it('asks once before fetching covers automatically, then does it on every add', async () => {
+    const fetchSpy = mockCoverFetch()
+    const wrapper = await mountSuspended(IndexPage)
+    await dropFiles(wrapper, [file('Crash Bandicoot (USA).chd')])
+    // Not yet decided → nothing fetched, a consent prompt is shown.
+    expect(fetchSpy).not.toHaveBeenCalled()
+    const consent = wrapper.find('[data-auto-covers]')
+    expect(consent.text()).toMatch(/libretro/i)
+    await consent.find('[data-accept]').trigger('click')
+    await flushPromises()
+    await flushPromises()
+    expect(state.settings.get('autoCovers')).toBe(true)
+    // Accepting fetches the cover for the game that was just added…
+    expect(state.setCover).toHaveBeenCalledTimes(1)
+    // …and later adds fetch without asking.
+    state.games = [{ id: 'new', title: 'Crash Bandicoot', source: 'local', kind: 'single', primaryName: 'Crash Bandicoot (USA).chd', files: [], sizeBytes: 1, createdAt: 1, lastPlayedAt: null }]
+    await dropFiles(wrapper, [file('Spyro the Dragon (USA).chd')])
+    await flushPromises()
+    expect(state.setCover).toHaveBeenCalledTimes(2)
+    expect(wrapper.find('[data-auto-covers]').exists()).toBe(false)
+    fetchSpy.mockRestore()
+  })
+
+  it('declining auto covers is remembered and nothing is fetched', async () => {
+    const fetchSpy = mockCoverFetch()
+    const wrapper = await mountSuspended(IndexPage)
+    await dropFiles(wrapper, [file('Crash Bandicoot (USA).chd')])
+    await wrapper.find('[data-auto-covers] [data-decline]').trigger('click')
+    await flushPromises()
+    expect(state.settings.get('autoCovers')).toBe(false)
+    expect(fetchSpy).not.toHaveBeenCalled()
+    expect(wrapper.find('[data-auto-covers]').exists()).toBe(false)
+    fetchSpy.mockRestore()
+  })
+
+  it('offers to find all missing covers at once', async () => {
+    state.settings.set('autoCovers', true)
+    state.games = [
+      { id: 'a', title: 'Crash Bandicoot', source: 'local', kind: 'single', primaryName: 'Crash Bandicoot (USA).chd', files: [], sizeBytes: 1, createdAt: 1, lastPlayedAt: null },
+      { id: 'b', title: 'Spyro the Dragon', source: 'local', kind: 'single', primaryName: 'Spyro.chd', files: [], sizeBytes: 1, createdAt: 1, lastPlayedAt: null },
+      { id: 'c', title: 'Has Cover', source: 'local', kind: 'single', primaryName: 'x.chd', files: [], sizeBytes: 1, createdAt: 1, lastPlayedAt: null, coverBlobKey: 'k' },
+    ]
+    const fetchSpy = mockCoverFetch()
+    const wrapper = await mountSuspended(IndexPage)
+    await flushPromises()
+    await wrapper.find('[data-find-all-covers]').trigger('click')
+    await flushPromises()
+    await flushPromises()
+    await flushPromises()
+    expect(state.setCover.mock.calls.map(([id]) => id).sort()).toEqual(['a', 'b'])
+    fetchSpy.mockRestore()
+  })
+
   it('hides the free games section when the manifest is empty', async () => {
     const wrapper = await mountSuspended(IndexPage)
     expect(wrapper.text()).not.toContain('Free games')
@@ -130,7 +196,7 @@ describe('index page', () => {
     })
     await dropFiles(wrapper, [file('big.chd', 800 * 1024 * 1024)])
     expect(noticeWhenSaving).toMatch(/memory/i)
-    expect(wrapper.find('[role=status]').text()).toMatch(/memory/i)
+    expect(wrapper.findAll('[role=status]').map((n) => n.text()).join(' | ')).toMatch(/memory/i)
     expect(state.addGame).toHaveBeenCalledTimes(1)
   })
 
