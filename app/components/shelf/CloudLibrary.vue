@@ -5,7 +5,7 @@ import { formatBytes } from '~/utils/format'
 import { listGames } from '~/utils/localDb'
 
 const { t } = useI18n()
-const { games, usage, uploadProgress, downloadProgress, notice, recoveryKey, close, uploadGame, deleteGame, renameGame, resumeUploads, coverUrl, isInCloud, downloadToLocal, shareGame, shareLibrary } = useCloudLibrary()
+const { remembered, games, usage, uploadProgress, downloadProgress, notice, recoveryKey, close, uploadGame, deleteGame, renameGame, resumeUploads, coverUrl, isInCloud, downloadToLocal, shareGame, shareLibrary } = useCloudLibrary()
 const emit = defineEmits<{ downloaded: [] }>()
 
 const pickerOpen = ref(false)
@@ -112,6 +112,7 @@ async function onDelete(id: string) {
       <div class="cloud-library__usage">
         <StorageMeter v-if="usage" :usage="usage.bytesUsed" :quota="usage.softLimit" />
         <span class="label">{{ t('cloud.gamesCount', { n: games.length }) }}</span>
+        <span v-if="remembered" class="label" :title="t('cloud.rememberedHint')">{{ t('cloud.rememberedBadge') }}</span>
       </div>
       <div class="cloud-library__actions">
         <button type="button" data-open-upload class="pill" :disabled="!!uploadProgress" @click="openPicker">{{ t('cloud.upload') }}</button>

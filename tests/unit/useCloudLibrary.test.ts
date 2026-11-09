@@ -261,3 +261,60 @@ describe('useCloudLibrary — download', () => {
     expect(new Uint8Array(await files[0]!.arrayBuffer())[0]).toBe('solo.chd'.length)
   }, 60_000)
 })
+
+describe('useCloudLibrary — stay open on this PC', () => {
+  let session: Map<string, string>
+  beforeEach(() => {
+    globalThis.indexedDB = new IDBFactory()
+    __resetDbForTests()
+    __resetCloudForTests()
+    session = sessionStorageShim()
+  })
+
+  it('remember: a fresh tab (empty session) reopens the library from this device', async () => {
+    const f = createFakeCloudApi()
+    __setCloudApiFactory(() => f.api)
+    const lib = useCloudLibrary()
+    await lib.create(PASS, 'good', { remember: true })
+    expect(lib.remembered.value).toBe(true)
+    session.clear()
+    __resetCloudForTests()
+    const again = useCloudLibrary()
+    await again.restore()
+    expect(again.status.value).toBe('open')
+  }, 30_000)
+
+  it('without remember nothing is kept after the tab closes', async () => {
+    const f = createFakeCloudApi()
+    __setCloudApiFactory(() => f.api)
+    await useCloudLibrary().create(PASS, 'good')
+    session.clear()
+    __resetCloudForTests()
+    const again = useCloudLibrary()
+    await again.restore()
+    expect(again.status.value).toBe('closed')
+  }, 30_000)
+
+  it('close forgets the remembered key too', async () => {
+    const f = createFakeCloudApi()
+    __setCloudApiFactory(() => f.api)
+    const lib = useCloudLibrary()
+    await lib.create(PASS, 'good', { remember: true })
+    lib.close()
+    await new Promise((r) => setTimeout(r, 0))
+    expect(await getSetting('cloudKeyRemembered')).toBeUndefined()
+  }, 30_000)
+
+  it('a remembered key whose library is gone is dropped', async () => {
+    const f = createFakeCloudApi()
+    __setCloudApiFactory(() => f.api)
+    await useCloudLibrary().create(PASS, 'good', { remember: true })
+    session.clear()
+    __resetCloudForTests()
+    __setCloudApiFactory(() => ({ ...f.api, getManifest: async () => { throw new ApiError(404) } }))
+    const again = useCloudLibrary()
+    await again.restore()
+    expect(again.status.value).toBe('closed')
+    expect(await getSetting('cloudKeyRemembered')).toBeUndefined()
+  }, 30_000)
+})

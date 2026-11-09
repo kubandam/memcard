@@ -16,6 +16,7 @@ const invite = ref('')
 const wrote = ref(false)
 const recoveryKey = ref<string | null>(null)
 const copied = ref(false)
+const stayOpen = ref(false)
 
 const chosen = computed(() => (ownPassword.value ? custom.value : generated.value))
 const weak = computed(() => ownPassword.value && custom.value.length > 0 && !isStrongSecret(custom.value))
@@ -28,11 +29,11 @@ function startCreate() {
 }
 
 async function onOpen() {
-  if (secret.value.trim()) await open(secret.value)
+  if (secret.value.trim()) await open(secret.value, { remember: stayOpen.value })
 }
 
 async function onCreate() {
-  const res = await create(chosen.value, invite.value)
+  const res = await create(chosen.value, invite.value, { remember: stayOpen.value })
   if (res) recoveryKey.value = res.recoveryKey
 }
 
@@ -74,6 +75,10 @@ async function copy(text: string) {
           {{ status === 'opening' ? t('cloud.opening') : t('cloud.open') }}
         </button>
       </div>
+      <label class="cloud-panel__check">
+        <input v-model="stayOpen" data-remember type="checkbox" />
+        {{ t('cloud.stayOpen') }}
+      </label>
       <p class="cloud-panel__hint">
         {{ t('cloud.noLibraryYet') }}
         <button type="button" data-start-create class="link-button label" @click="startCreate">{{ t('cloud.createNew') }}</button>
@@ -102,6 +107,10 @@ async function copy(text: string) {
       <label class="cloud-panel__check">
         <input v-model="wrote" data-wrote type="checkbox" />
         {{ t('cloud.wroteItDown') }}
+      </label>
+      <label class="cloud-panel__check">
+        <input v-model="stayOpen" type="checkbox" />
+        {{ t('cloud.stayOpen') }}
       </label>
       <input v-model="invite" data-invite type="text" class="field" :placeholder="t('cloud.invitePlaceholder')" :aria-label="t('cloud.invitePlaceholder')" />
       <div class="cloud-panel__row">

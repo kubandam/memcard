@@ -18,6 +18,7 @@ describe('CloudLibrary', () => {
   beforeEach(() => {
     Object.assign(cloud, {
       recoveryKey: ref(null),
+      remembered: ref(false),
       games: ref([{ id: 'c1', title: 'Crash', kind: 'single', primaryName: 'c.chd', files: [], sizeBytes: 100, createdAt: 1, lastPlayedAt: null, kGame: 'k' }]),
       usage: ref({ bytesUsed: 2e9, softLimit: 8 * 1024 ** 3, hardLimit: 9 * 1024 ** 3 }),
       uploadProgress: ref(null),

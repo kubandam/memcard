@@ -11,7 +11,7 @@ import { ApiError, createCloudApi, type CloudApi } from '~/utils/cloudApi'
 import { ResumeMismatchError, UploadCancelledError, uploadObject } from '~/utils/cloudUpload'
 import { DecryptError, downloadObject } from '~/utils/cloudDownload'
 import { StorageError } from '~/utils/localDb'
-import { addGame, deleteUploadState, getBlob, getGame, getSetting, getUploadStates, putUploadState, setCover, setSetting } from '~/utils/localDb'
+import { addGame, deleteSetting, deleteUploadState, getBlob, getGame, getSetting, getUploadStates, putUploadState, setCover, setSetting } from '~/utils/localDb'
 import type { LibraryNotice } from './useLocalLibrary'
 
 /** A cloud upload in progress, kept in local settings so it can resume after a reload. */
@@ -42,6 +42,8 @@ export type CloudStatus = 'closed' | 'opening' | 'open' | 'error'
 
 /** sessionStorage key holding base64url(K_root) while a library is open in this tab. */
 export const SESSION_KEY = 'memcard.cloud.kroot'
+/** IndexedDB setting holding base64url(K_root) when "Stay open on this PC" is on. */
+export const REMEMBER_KEY = 'cloudKeyRemembered'
 
 type ApiFactory = (opts: { libraryId: string; kAuth: Uint8Array }) => CloudApi
 let apiFactory: ApiFactory = (opts) => createCloudApi(opts)
@@ -59,6 +61,7 @@ interface CloudState {
   notice: Ref<LibraryNotice | null>
   busy: Ref<string | null>
   recoveryKey: Ref<string | null>
+  remembered: Ref<boolean>
   uploadProgress: Ref<UploadProgress | null>
   downloadProgress: Ref<UploadProgress | null>
   issuedShares: Ref<IssuedShare[]>
@@ -83,6 +86,7 @@ function freshState(): CloudState {
     notice: ref(null),
     busy: ref(null),
     recoveryKey: ref(null),
+    remembered: ref(false),
     uploadProgress: ref(null),
     downloadProgress: ref(null),
     issuedShares: ref([]),
@@ -147,10 +151,17 @@ export function useCloudLibrary() {
     return keys
   }
 
-  function remember(kRoot: Uint8Array, keys: LibraryKeys) {
+  async function remember(kRoot: Uint8Array, keys: LibraryKeys, onDevice?: boolean) {
     s.libraryId.value = keys.libraryId
     s.status.value = 'open'
     session()?.setItem(SESSION_KEY, toBase64Url(kRoot))
+    if (onDevice === true) {
+      await setSetting(REMEMBER_KEY, toBase64Url(kRoot)).catch(() => undefined)
+      s.remembered.value = true
+    } else if (onDevice === false) {
+      await deleteSetting(REMEMBER_KEY).catch(() => undefined)
+      s.remembered.value = false
+    }
   }
 
   function reset() {
@@ -171,13 +182,13 @@ export function useCloudLibrary() {
     return parsed.kind === 'recovery' ? parsed.kRoot : deriveRootKey(parsed.password.trim())
   }
 
-  async function openWithRoot(kRoot: Uint8Array): Promise<boolean> {
+  async function openWithRoot(kRoot: Uint8Array, onDevice?: boolean): Promise<boolean> {
     s.status.value = 'opening'
     s.notice.value = null
     try {
       const keys = await activate(kRoot)
       await loadManifest()
-      remember(kRoot, keys)
+      await remember(kRoot, keys, onDevice)
       await refreshUsage()
       return true
     } catch (err) {
@@ -189,12 +200,12 @@ export function useCloudLibrary() {
     }
   }
 
-  async function open(secret: string): Promise<boolean> {
+  async function open(secret: string, opts: { remember?: boolean } = {}): Promise<boolean> {
     s.status.value = 'opening'
-    return openWithRoot(await rootFromSecret(secret))
+    return openWithRoot(await rootFromSecret(secret), opts.remember ?? false)
   }
 
-  async function create(password: string, invite: string): Promise<{ recoveryKey: string } | null> {
+  async function create(password: string, invite: string, opts: { remember?: boolean } = {}): Promise<{ recoveryKey: string } | null> {
     s.status.value = 'opening'
     s.notice.value = null
     const kRoot = await rootFromSecret(password)
@@ -203,7 +214,7 @@ export function useCloudLibrary() {
       await s.api!.createLibrary(keys.libraryId, await authVerifierHex(keys.kAuth), invite.trim())
       setManifest({ version: 1, games: [] }, null)
       await saveManifest(() => {})
-      remember(kRoot, keys)
+      await remember(kRoot, keys, opts.remember ?? false)
       await refreshUsage()
       s.recoveryKey.value = formatRecoveryKey(kRoot)
       return { recoveryKey: s.recoveryKey.value }
@@ -219,20 +230,37 @@ export function useCloudLibrary() {
 
   function close() {
     s.recoveryKey.value = null
+    s.remembered.value = false
     session()?.removeItem(SESSION_KEY)
+    void deleteSetting(REMEMBER_KEY).catch(() => undefined)
     reset()
   }
 
   async function restore(): Promise<void> {
     if (s.status.value === 'open') return
-    const stored = session()?.getItem(SESSION_KEY)
-    if (!stored) return
-    try {
-      const kRoot = fromBase64Url(stored)
-      if (kRoot.length === 32) await openWithRoot(kRoot)
-    } catch {
+    const fromSession = session()?.getItem(SESSION_KEY)
+    if (fromSession) {
+      try {
+        const kRoot = fromBase64Url(fromSession)
+        if (kRoot.length === 32 && (await openWithRoot(kRoot))) {
+          s.remembered.value = !!(await getSetting<string>(REMEMBER_KEY).catch(() => undefined))
+          return
+        }
+      } catch {
+        // fall through
+      }
       session()?.removeItem(SESSION_KEY)
     }
+    const fromDevice = await getSetting<string>(REMEMBER_KEY).catch(() => undefined)
+    if (!fromDevice) return
+    const kRoot = fromBase64Url(fromDevice)
+    if (kRoot.length !== 32 || !(await openWithRoot(kRoot))) {
+      // The library is gone or the key is unusable: do not keep trying it on every visit.
+      await deleteSetting(REMEMBER_KEY).catch(() => undefined)
+      s.remembered.value = false
+      return
+    }
+    s.remembered.value = true
   }
 
   /** Applies `mutate` to the manifest and saves it; on a concurrent change (412) reloads and retries once. */
@@ -572,6 +600,7 @@ export function useCloudLibrary() {
     notice: s.notice,
     busy: s.busy,
     recoveryKey: s.recoveryKey,
+    remembered: s.remembered,
     uploadProgress: s.uploadProgress,
     isInCloud,
     uploadGame,

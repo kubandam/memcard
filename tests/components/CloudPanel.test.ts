@@ -27,7 +27,22 @@ describe('CloudPanel', () => {
     const w = await mountSuspended(CloudPanel)
     await w.find('input[data-secret]').setValue('otter-pencil-river-mango-tulip')
     await w.find('form[data-open]').trigger('submit')
-    expect(cloud.open).toHaveBeenCalledWith('otter-pencil-river-mango-tulip')
+    expect(cloud.open).toHaveBeenCalledWith('otter-pencil-river-mango-tulip', { remember: false })
+  })
+
+  it('Stay open on this PC is passed to open and create', async () => {
+    const w = await mountSuspended(CloudPanel)
+    await w.find('input[data-secret]').setValue('otter-pencil-river-mango-tulip')
+    await w.find('input[data-remember]').setValue(true)
+    await w.find('form[data-open]').trigger('submit')
+    expect(cloud.open).toHaveBeenCalledWith('otter-pencil-river-mango-tulip', { remember: true })
+    await w.find('[data-start-create]').trigger('click')
+    const phrase = w.find('[data-passphrase]').text()
+    await w.find('input[data-invite]').setValue('i')
+    await w.find('input[data-wrote]').setValue(true)
+    await w.find('[data-create]').trigger('click')
+    await flushPromises()
+    expect(cloud.create).toHaveBeenCalledWith(phrase, 'i', { remember: true })
   })
 
   it('create flow: generated 5-word passphrase, must confirm it was written down, needs an invite', async () => {
@@ -43,7 +58,7 @@ describe('CloudPanel', () => {
     expect(w.find('[data-create]').attributes('disabled')).toBeUndefined()
     await w.find('[data-create]').trigger('click')
     await flushPromises()
-    expect(cloud.create).toHaveBeenCalledWith(phrase, 'my-invite')
+    expect(cloud.create).toHaveBeenCalledWith(phrase, 'my-invite', { remember: false })
     expect(w.text()).toContain('MCKEY-abc')
   })
 

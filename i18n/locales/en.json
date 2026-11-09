@@ -187,7 +187,10 @@
     "missingObject": "Part of this game is missing from the online library.",
     "download": "Download to this PC",
     "downloading": "Downloading {title}",
-    "inMyGames": "In My games"
+    "inMyGames": "In My games",
+    "stayOpen": "Stay open on this PC (anyone using this browser can open it)",
+    "rememberedBadge": "Stays open on this PC",
+    "rememberedHint": "Close library to forget it on this PC."
   },
   "share": {
     "share": "Share",
