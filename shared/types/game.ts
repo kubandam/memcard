@@ -31,3 +31,19 @@ export interface ClassifyError {
 }
 
 export type ClassifyResult = { ok: true; game: ClassifiedGame } | { ok: false; error: ClassifyError }
+
+export type GameSource = 'local' | 'cloud'
+
+export interface LocalGame {
+  id: string
+  title: string
+  source: GameSource
+  kind: GameKind
+  primaryName: string
+  files: GameFileRef[]
+  generatedM3u?: string
+  sizeBytes: number
+  createdAt: number
+  lastPlayedAt: number | null
+  coverBlobKey?: string
+}
