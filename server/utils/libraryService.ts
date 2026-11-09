@@ -14,6 +14,8 @@ export class ServiceError extends Error {
 /** Largest encrypted part we accept: 16 MiB of plaintext (4 chunks) plus GCM tags, with headroom. */
 export const MAX_PART_BYTES = 17 * 1024 * 1024
 const PLAIN_PART = 16 * 1024 * 1024
+/** Unfinished multipart uploads a library may hold at once. */
+export const MAX_OPEN_UPLOADS = 8
 
 const manifestPath = (libraryId: string, version: string) => `lib/${libraryId}/manifest/${version}`
 export const objectPath = (libraryId: string, key: string) => `lib/${libraryId}/obj/${key}`
@@ -67,6 +69,7 @@ export function createLibraryService(deps: { store: LibraryStore; r2: R2Bucket; 
     },
 
     async createUpload(libraryId, key) {
+      if ((await store.openUploads(libraryId)) >= MAX_OPEN_UPLOADS) throw new ServiceError(429, 'too-many-uploads')
       const mpu = await r2.createMultipartUpload(objectPath(libraryId, key))
       await store.putUpload(mpu.uploadId, libraryId, key, mpu.uploadId)
       return { uploadId: mpu.uploadId }
@@ -77,8 +80,11 @@ export function createLibraryService(deps: { store: LibraryStore; r2: R2Bucket; 
       if ((part - 1) * PLAIN_PART >= hardLimit) throw new ServiceError(413, 'quota')
       if (body.length === 0 || body.length > MAX_PART_BYTES) throw new ServiceError(400)
       await requireUpload(libraryId, key, uploadId)
+      // Unfinished uploads occupy R2 too, so they count against the same limit.
+      if ((await store.totalBytes()) + (await store.pendingBytes()) + body.length > hardLimit) throw new ServiceError(413, 'quota')
       try {
         const uploaded = await r2.resumeMultipartUpload(objectPath(libraryId, key), uploadId).uploadPart(part, body)
+        await store.addUploadBytes(uploadId, body.length)
         return { etag: uploaded.etag }
       } catch {
         // R2 forgot the upload (aborted or expired): tell the client to start over.

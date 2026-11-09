@@ -60,10 +60,31 @@ describe('multipart objects', () => {
   it('quota is enforced on the real stored size, not the size the client claims', async () => {
     const { svc, store, r2 } = await setup(8 * MiB)
     const { uploadId } = await svc.createUpload('liba', K1)
-    const p = await svc.uploadPart('liba', K1, uploadId, 1, new Uint8Array(10 * MiB))
+    expect(await code(svc.uploadPart('liba', K1, uploadId, 1, new Uint8Array(10 * MiB)))).toBe(413)
+    const p = await svc.uploadPart('liba', K1, uploadId, 1, new Uint8Array(6 * MiB))
+    // Another library fills the space between our last part and complete.
+    await store.addObject('libb', K2, 4 * MiB)
     expect(await code(svc.completeUpload('liba', K1, uploadId, [{ partNumber: 1, etag: p.etag }]))).toBe(413)
     expect(r2.objects.has('lib/liba/obj/' + K1)).toBe(false)
     expect((await store.getLibrary('liba'))!.bytesUsed).toBe(0)
+  })
+
+  it('bytes in unfinished uploads count toward the quota', async () => {
+    const { svc } = await setup(12 * MiB)
+    const a = await svc.createUpload('liba', K1)
+    await svc.uploadPart('liba', K1, a.uploadId, 1, new Uint8Array(8 * MiB))
+    const b = await svc.createUpload('liba', K2)
+    expect(await code(svc.uploadPart('liba', K2, b.uploadId, 1, new Uint8Array(8 * MiB)))).toBe(413)
+    // Aborting frees the reserved bytes.
+    await svc.abortUpload('liba', K1, a.uploadId)
+    expect(await code(svc.uploadPart('liba', K2, b.uploadId, 1, new Uint8Array(8 * MiB)))).toBe('ok')
+  })
+
+  it('limits how many uploads a library can have open at once', async () => {
+    const { svc } = await setup()
+    for (let i = 0; i < 8; i++) await svc.createUpload('liba', `abcdefghjkmnpqrstvwxy${String(i).padStart(2, '0')}`)
+    expect(await code(svc.createUpload('liba', 'abcdefghjkmnpqrstvwxy99'))).toBe(429)
+    expect(await code(svc.createUpload('libb', K1))).toBe('ok')
   })
 
   it('refuses part numbers that could never fit the quota', async () => {

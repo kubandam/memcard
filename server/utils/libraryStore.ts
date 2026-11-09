@@ -19,12 +19,16 @@ export interface LibraryStore {
   putUpload(id: string, libraryId: string, key: string, uploadId: string): Promise<void>
   getUpload(id: string): Promise<{ libraryId: string; key: string; uploadId: string } | null>
   deleteUpload(id: string): Promise<void>
+  /** Bytes received so far by an unfinished multipart upload (reserved against the quota). */
+  addUploadBytes(id: string, bytes: number): Promise<void>
+  pendingBytes(): Promise<number>
+  openUploads(libraryId: string): Promise<number>
 }
 
 export function createMemoryStore(): LibraryStore {
   const libs = new Map<string, LibraryRow>()
   const objects = new Map<string, Map<string, number>>()
-  const uploads = new Map<string, { libraryId: string; key: string; uploadId: string }>()
+  const uploads = new Map<string, { libraryId: string; key: string; uploadId: string; bytes: number }>()
   return {
     async createLibrary(id, authVerifier) {
       if (libs.has(id)) return 'exists'
@@ -68,13 +72,28 @@ export function createMemoryStore(): LibraryStore {
       return [...(objects.get(libraryId) ?? new Map()).entries()].map(([key, size]) => ({ key, size }))
     },
     async putUpload(id, libraryId, key, uploadId) {
-      uploads.set(id, { libraryId, key, uploadId })
+      uploads.set(id, { libraryId, key, uploadId, bytes: 0 })
     },
     async getUpload(id) {
-      return uploads.get(id) ?? null
+      const u = uploads.get(id)
+      return u ? { libraryId: u.libraryId, key: u.key, uploadId: u.uploadId } : null
     },
     async deleteUpload(id) {
       uploads.delete(id)
+    },
+    async addUploadBytes(id, bytes) {
+      const u = uploads.get(id)
+      if (u) u.bytes += bytes
+    },
+    async pendingBytes() {
+      let n = 0
+      for (const u of uploads.values()) n += u.bytes
+      return n
+    },
+    async openUploads(libraryId) {
+      let n = 0
+      for (const u of uploads.values()) if (u.libraryId === libraryId) n++
+      return n
     },
   }
 }
@@ -136,6 +155,17 @@ export function createD1Store(db: D1Database): LibraryStore {
     },
     async deleteUpload(id) {
       await db.prepare('DELETE FROM uploads WHERE id = ?1').bind(id).run()
+    },
+    async addUploadBytes(id, bytes) {
+      await db.prepare('UPDATE uploads SET bytes = bytes + ?2 WHERE id = ?1').bind(id, bytes).run()
+    },
+    async pendingBytes() {
+      const r = await db.prepare('SELECT COALESCE(SUM(bytes), 0) AS n FROM uploads').first<{ n: number }>()
+      return r?.n ?? 0
+    },
+    async openUploads(libraryId) {
+      const r = await db.prepare('SELECT COUNT(*) AS n FROM uploads WHERE library_id = ?1').bind(libraryId).first<{ n: number }>()
+      return r?.n ?? 0
     },
   }
 }
