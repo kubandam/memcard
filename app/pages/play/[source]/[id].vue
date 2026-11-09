@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
 import type { ClassifiedGame, LocalGame } from '~~/shared/types/game'
 import { sessionGame } from '~/composables/useLocalLibrary'
@@ -29,7 +29,7 @@ const notFound = ref(false)
 const libraryClosed = ref(false)
 const controlsOpen = ref(false)
 const mapping = ref<KeyBinding[]>([])
-const saveSync = ref<ReturnType<typeof createSaveSync> | null>(null)
+const saveSync = shallowRef<ReturnType<typeof createSaveSync> | null>(null)
 const saveNotice = ref<string | null>(null)
 
 interface BootHooks {
