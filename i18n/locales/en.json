@@ -245,5 +245,14 @@
     "loaded": "Snapshot loaded",
     "none": "No snapshot in the cloud yet",
     "resumed": "Continuing from your last snapshot"
+  },
+  "hero": {
+    "label": "Continue playing",
+    "kicker": "Continue playing",
+    "played": "Played {when}",
+    "snapshot": "snapshot {time}",
+    "continue": "Continue",
+    "play": "Play",
+    "startOver": "Start over"
   }
 }

@@ -72,6 +72,10 @@ async function confirmDelete(id: string) {
       </GameGrid>
     </section>
 
+    <ClientOnly>
+      <ContinueHero v-if="cloud.status.value === 'open'" />
+    </ClientOnly>
+
     <section aria-labelledby="online-library" class="online">
       <div class="library-head">
         <h2 id="online-library" class="display library-head__title">{{ t('cloud.section') }}</h2>

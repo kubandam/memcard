@@ -11,6 +11,7 @@ import type { SharePayload } from '~~/shared/types/share'
 import { ApiError, createCloudApi, type CloudApi } from '~/utils/cloudApi'
 import { ResumeMismatchError, UploadCancelledError, uploadObject } from '~/utils/cloudUpload'
 import { DecryptError, downloadObject } from '~/utils/cloudDownload'
+import { createStateSync } from '~/utils/stateSyncClient'
 import { StorageError } from '~/utils/localDb'
 import { addGame, deleteSetting, deleteUploadState, getBlob, getGame, getSetting, getUploadStates, putUploadState, setCover, setSetting } from '~/utils/localDb'
 import type { LibraryNotice } from './useLocalLibrary'
@@ -603,6 +604,22 @@ export function useCloudLibrary() {
     }
   }
 
+  const snapshots = new Map<string, { url: string; updatedAt: number } | null>()
+
+  /** Screenshot of a game's synced save state (cached per page), or null. */
+  async function snapshot(game: CloudGame): Promise<{ url: string; updatedAt: number } | null> {
+    if (snapshots.has(game.id)) return snapshots.get(game.id)!
+    try {
+      const { api } = requireOpen()
+      const shot = await createStateSync({ api, kGame: fromBase64Url(game.kGame) }).latestShot()
+      const result = shot ? { url: URL.createObjectURL(new Blob([shot.image as BlobPart], { type: 'image/png' })), updatedAt: shot.updatedAt } : null
+      snapshots.set(game.id, result)
+      return result
+    } catch {
+      return null
+    }
+  }
+
   /** Records that a game was started (shown as "played …" on every device). Best effort. */
   async function markPlayed(id: string): Promise<void> {
     try {
@@ -644,6 +661,7 @@ export function useCloudLibrary() {
     deleteGame,
     renameGame,
     markPlayed,
+    snapshot,
     coverUrl,
     downloadGameFiles,
     downloadToLocal,
