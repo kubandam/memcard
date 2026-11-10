@@ -114,3 +114,47 @@ describe('repairGamepads', () => {
     expect(repairGamepads({})).toBe(false)
   })
 })
+
+describe('left stick mirrors the D-pad', () => {
+  function withAxes(index: number, x: number, y: number): Gamepad {
+    const g = pad(index) as unknown as { axes: number[] }
+    g.axes = [x, y, 0, 0]
+    return g as unknown as Gamepad
+  }
+
+  it('pushing the stick presses and releases D-pad directions for player 1', () => {
+    const { emu } = fakeEmulator(Handler)
+    const sent: Array<[number, number, number]> = []
+    Object.assign(emu, { started: true, settingsMenu: { style: { display: 'none' } }, isPopupOpen: () => false, gameManager: { simulateInput: (p: number, i: number, v: number) => sent.push([p, i, v]) } })
+    repairGamepads(emu)
+    pads = [null, withAxes(1, 0, 0)]
+    vi.advanceTimersByTime(20)
+    pads = [null, withAxes(1, 0.9, 0)] // right
+    vi.advanceTimersByTime(20)
+    pads = [null, withAxes(1, 0.4, 0)] // still right (hysteresis)
+    vi.advanceTimersByTime(20)
+    pads = [null, withAxes(1, -0.8, -0.9)] // left + up
+    vi.advanceTimersByTime(20)
+    pads = [null, withAxes(1, 0, 0)] // centre
+    vi.advanceTimersByTime(20)
+    expect(sent).toEqual([
+      [0, 7, 1],
+      [0, 7, 0], [0, 6, 1], [0, 4, 1],
+      [0, 6, 0], [0, 4, 0],
+    ])
+    emu.gamepad.terminate()
+  })
+
+  it('does nothing while the emulator menu is open', () => {
+    const { emu } = fakeEmulator(Handler)
+    const sent: unknown[] = []
+    Object.assign(emu, { started: true, settingsMenu: { style: { display: '' } }, gameManager: { simulateInput: () => sent.push(1) } })
+    repairGamepads(emu)
+    pads = [withAxes(0, 0, 0)]
+    vi.advanceTimersByTime(20)
+    pads = [withAxes(0, 1, 0)]
+    vi.advanceTimersByTime(20)
+    expect(sent).toEqual([])
+    emu.gamepad.terminate()
+  })
+})

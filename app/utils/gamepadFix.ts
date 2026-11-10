@@ -11,6 +11,7 @@
  *
  * The repair re-points the handler's listeners through a lookup by `Gamepad.index`, never lets a
  * listener throw, restarts the polling loop, and assigns any already-known pad to a free player.
+ * It also mirrors the left stick onto the D-pad (see `createStickToDpad`).
  */
 
 interface PadSnapshot {
@@ -36,6 +37,45 @@ export interface GamepadEmulatorLike {
   gamepadSelection?: string[]
   gamepadLabels?: unknown[]
   updateGamepadLabels?: () => void
+  started?: boolean
+  settingsMenu?: { style: { display: string } }
+  isPopupOpen?: () => boolean
+  gameManager?: { simulateInput(player: number, index: number, value: number): void }
+}
+
+/** RetroPad indexes of the D-pad in EmulatorJS controls. */
+const DPAD = { up: 4, down: 5, left: 6, right: 7 } as const
+/** Stick travel that presses a direction, and the lower point that releases it (no flicker). */
+const PRESS_AT = 0.5
+const RELEASE_AT = 0.3
+
+/**
+ * The PS1 core emulates the original digital pad unless a game is switched to analog, so the left
+ * stick does nothing in most games (and Crash 1 & co. never read it). Mirror it onto the D-pad.
+ */
+export function createStickToDpad(emu: GamepadEmulatorLike) {
+  const held = new Map<string, -1 | 0 | 1>()
+  return (e: GamepadEventLike, player: number) => {
+    const axis = e.axis
+    if (axis !== 'LEFT_STICK_X' && axis !== 'LEFT_STICK_Y') return
+    if (!emu.started || !emu.gameManager) return
+    if ((emu.settingsMenu && emu.settingsMenu.style.display !== 'none') || emu.isPopupOpen?.()) return
+    const value = typeof e.value === 'number' ? e.value : 0
+    const key = `${player}:${axis}`
+    const before = held.get(key) ?? 0
+    let now: -1 | 0 | 1 = before
+    if (value >= PRESS_AT) now = 1
+    else if (value <= -PRESS_AT) now = -1
+    else if (Math.abs(value) < RELEASE_AT) now = 0
+    if (now === before) return
+    held.set(key, now)
+    const [neg, pos] = axis === 'LEFT_STICK_X' ? [DPAD.left, DPAD.right] : [DPAD.up, DPAD.down]
+    const press = (index: number, on: boolean) => emu.gameManager!.simulateInput(player, index, on ? 1 : 0)
+    if (before === -1) press(neg, false)
+    if (before === 1) press(pos, false)
+    if (now === -1) press(neg, true)
+    if (now === 1) press(pos, true)
+  }
 }
 
 const REPAIRED = Symbol.for('memcard.gamepadRepaired')
@@ -73,17 +113,26 @@ export function repairGamepads(emu: GamepadEmulatorLike): boolean {
   if (marked[REPAIRED]) return true
   marked[REPAIRED] = true
 
+  const stickToDpad = createStickToDpad(emu)
   // The emulator's listeners take an *array position* where they say gamepadIndex.
   for (const name of ['connected', 'axischanged', 'buttondown', 'buttonup'] as const) {
     const original = handler.listeners[name]
-    if (typeof original !== 'function') continue
+    if (typeof original !== 'function' && name !== 'axischanged') continue
     handler.listeners[name] = (e) => {
       const position = handler.gamepads.findIndex((p) => p?.index === e.gamepadIndex)
       if (position < 0) return
       try {
-        original({ ...e, gamepadIndex: position })
+        original?.({ ...e, gamepadIndex: position })
       } catch {
         // A throwing listener would stop the polling loop for good.
+      }
+      if (name !== 'axischanged') return
+      try {
+        const pad = handler.gamepads[position]
+        const player = pad ? (emu.gamepadSelection ?? []).indexOf(padKey(pad)) : -1
+        if (player >= 0) stickToDpad(e, player)
+      } catch {
+        // see above
       }
     }
   }
