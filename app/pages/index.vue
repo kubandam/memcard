@@ -174,7 +174,8 @@ async function confirmDelete(id: string) {
 
 .library-head__meta {
   display: flex;
-  gap: 18px;
+  flex-wrap: wrap;
+  gap: 6px 18px;
   align-items: baseline;
 }
 

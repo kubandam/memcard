@@ -186,7 +186,9 @@ const { t } = useI18n()
 
 .tile__meta {
   display: flex;
-  gap: 6px;
+  flex-wrap: wrap;
+  gap: 0 6px;
+  white-space: nowrap;
   margin-top: 4px;
   padding-left: 13px;
   font-size: 10px;

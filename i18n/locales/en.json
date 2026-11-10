@@ -105,6 +105,7 @@
   "player": {
     "title": "Player",
     "fullscreen": "Fullscreen",
+    "tapForSound": "Tap for sound",
     "controls": "Controls",
     "library": "← Library",
     "notFound": "Game not found",

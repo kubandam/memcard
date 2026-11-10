@@ -1,3 +1,5 @@
+import { PS_VIRTUAL_GAMEPAD } from '~/utils/touchPlay'
+
 /**
  * EmulatorJS 4.2.3 facts verified in the Task 0 spike (Chromium, CDN build, pcsx_rearmed):
  *
@@ -136,6 +138,8 @@ export function buildEjsGlobals(opts: EjsOptions): Record<string, unknown> {
     EJS_disableAutoLang: true,
     EJS_askBeforeExit: false,
     EJS_defaultOptions: {},
+    // PlayStation symbols on the touch pad; when it shows is decided by watchVirtualGamepad().
+    EJS_VirtualGamepadSettings: PS_VIRTUAL_GAMEPAD.map((c) => ({ ...c })),
   }
   return globals
 }

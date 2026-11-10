@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { buildEjsGlobals, type EjsOptions } from '~/utils/emulatorjs'
 import type { ExtraFile } from '~/utils/gamePayload'
 import { isSafeFileName } from '~~/shared/utils/validateGame'
+import { watchVirtualGamepad, type VirtualPadEmulatorLike } from '~/utils/touchPlay'
 
 export type EmulatorPhase = 'idle' | 'reading' | 'packing' | 'loading' | 'starting' | 'running' | 'error'
 
@@ -84,6 +85,8 @@ export function useEmulator() {
   const phase = ref<EmulatorPhase>('idle')
   const progress = ref(0)
   const error = ref<string | null>(null)
+  /** True while EmulatorJS's on-screen pad is up (touch screen, no controller). */
+  const virtualPad = ref(false)
   let saveHandler: SaveExportHandler | null = null
   let watchdog: ReturnType<typeof setTimeout> | undefined
 
@@ -202,6 +205,8 @@ export function useEmulator() {
         } catch {
           // Never let the controller layout stop the game.
         }
+        // The page is left with a full navigation, so the watcher never needs stopping.
+        watchVirtualGamepad(running as VirtualPadEmulatorLike, (shown) => (virtualPad.value = shown))
       }
       if (shader) {
         try {
@@ -275,5 +280,5 @@ export function useEmulator() {
     }
   }
 
-  return { phase, progress, error, setPhase, setSubProgress, fail, start, onSaveExport, flushSaves, loadState, captureState }
+  return { phase, progress, error, virtualPad, setPhase, setSubProgress, fail, start, onSaveExport, flushSaves, loadState, captureState }
 }

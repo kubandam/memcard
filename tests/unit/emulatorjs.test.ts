@@ -16,6 +16,12 @@ describe('buildEjsGlobals', () => {
     expect(g).not.toHaveProperty('EJS_biosUrl')
   })
 
+  it('gives the touch pad PlayStation symbols', () => {
+    const g = buildEjsGlobals({ file, gameName: 'g.chd', base: '/d/', color: '#000' })
+    const texts = (g.EJS_VirtualGamepadSettings as Array<{ text?: string }>).map((c) => c.text)
+    expect(texts).toEqual(expect.arrayContaining(['✕', '○', '□', '△', 'L1', 'R1', 'L2', 'R2']))
+  })
+
   it('never emits EJS_biosUrl (EmulatorJS 4.2.3 cannot take a File there; the BIOS goes through the FS hook)', () => {
     const g = buildEjsGlobals({ file, gameName: 'g.chd', base: '/emulatorjs/data/', color: '#000' })
     expect(Object.keys(g)).not.toContain('EJS_biosUrl')

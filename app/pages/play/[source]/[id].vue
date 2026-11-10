@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
 import type { ClassifiedGame, LocalGame } from '~~/shared/types/game'
 import { sessionGame } from '~/composables/useLocalLibrary'
@@ -18,6 +18,7 @@ import { describeTransfer, type Transfer } from '~/utils/transfer'
 import { createAutoSave } from '~/utils/autoSave'
 import { PICTURE_SETTING, shaderFor } from '~/utils/display'
 import { RIGHT_STICK_MODES, setRightStickMode, type RightStickMode } from '~/utils/gamepadFix'
+import { audioSuspended, canFullscreen, resumeAudio, toggleFullscreen } from '~/utils/touchPlay'
 
 definePageMeta({ layout: 'boot' })
 
@@ -28,7 +29,7 @@ const { public: { emulatorjsBase } } = useRuntimeConfig()
 const source = computed(() => String(route.params.source))
 const id = computed(() => String(route.params.id))
 
-const { phase, progress, error, setPhase, setSubProgress, fail, start, onSaveExport, flushSaves, loadState, captureState } = useEmulator()
+const { phase, progress, error, virtualPad, setPhase, setSubProgress, fail, start, onSaveExport, flushSaves, loadState, captureState } = useEmulator()
 const title = ref('')
 const notFound = ref(false)
 const libraryClosed = ref(false)
@@ -306,6 +307,8 @@ async function loadSession(game: ClassifiedGame) {
 }
 
 onMounted(async () => {
+  fullscreenAvailable.value = canFullscreen()
+  window.addEventListener('pointerdown', unblockSound, { capture: true })
   void loadRightStick()
   window.addEventListener('pagehide', flushSaves)
   document.addEventListener('visibilitychange', onVisibility)
@@ -338,6 +341,8 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  window.removeEventListener('pointerdown', unblockSound, { capture: true })
+  soundChecks.forEach(clearTimeout)
   window.removeEventListener('pagehide', flushSaves)
   document.removeEventListener('visibilitychange', onVisibility)
   autoSave?.stop()
@@ -377,12 +382,41 @@ async function leave() {
 }
 
 function fullscreen() {
-  document.getElementById('stage')?.requestFullscreen?.()
+  void toggleFullscreen(document.getElementById('stage'))
 }
+
+/** iPhone Safari has no fullscreen for pages; there the button is hidden (Add to Home Screen instead). */
+const fullscreenAvailable = ref(false)
+
+/** Safari keeps the game silent until the screen is touched (a controller press does not count). */
+const soundBlocked = ref(false)
+let soundChecks: ReturnType<typeof setTimeout>[] = []
+
+function ejs(): unknown {
+  return (window as unknown as { EJS_emulator?: unknown }).EJS_emulator
+}
+
+function checkSound() {
+  soundBlocked.value = audioSuspended(ejs())
+}
+
+async function unblockSound() {
+  if (!soundBlocked.value) return
+  if (await resumeAudio(ejs())) soundBlocked.value = false
+}
+
+watch(phase, (p) => {
+  if (p !== 'running') return
+  // The core opens its audio a moment after the first frame.
+  soundChecks = [500, 1500, 4000].map((ms) => setTimeout(checkSound, ms))
+})
+
+/** Picture size follows the stage; EmulatorJS only re-measures on window resize. */
+watch(virtualPad, () => nextTick(() => window.dispatchEvent(new Event('resize'))))
 </script>
 
 <template>
-  <div id="stage" class="stage" :class="{ 'stage--running': phase === 'running' }">
+  <div id="stage" class="stage" :class="{ 'stage--running': phase === 'running', 'stage--centred': !virtualPad }">
     <template v-if="libraryClosed">
       <div class="not-found">
         <h1 class="not-found__title">{{ t('cloud.closedTitle') }}</h1>
@@ -407,6 +441,9 @@ function fullscreen() {
         :save-status="saveSync?.status.value ?? null"
         :saved-at="saveSync?.lastSyncedAt.value ?? null"
         :save-notice="saveNotice"
+        :can-fullscreen="fullscreenAvailable"
+        :sound-blocked="soundBlocked"
+        @sound="unblockSound"
         @fullscreen="fullscreen"
         @controls="openControls"
         @leave="leave"
@@ -420,6 +457,12 @@ function fullscreen() {
 .stage {
   position: absolute;
   inset: 0;
+  /* No pinch-zoom, double-tap zoom, pull-to-refresh or long-press menus while playing. */
+  touch-action: none;
+  overscroll-behavior: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .stage--running,
@@ -430,6 +473,23 @@ function fullscreen() {
 .game {
   position: absolute;
   inset: 0;
+}
+
+/*
+ * Held upright (tablet or phone in portrait) the core draws at the top of a tall canvas, leaving the
+ * bottom half black. With no on-screen pad to make room for, the picture goes in a centred 4:3 frame.
+ */
+@media (orientation: portrait) {
+  .stage--centred .game :deep(.ejs_canvas_parent) {
+    position: absolute;
+    left: 0;
+    top: 50%;
+    width: 100%;
+    height: auto;
+    aspect-ratio: 4 / 3;
+    max-height: 100%;
+    translate: 0 -50%;
+  }
 }
 
 .not-found {

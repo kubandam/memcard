@@ -22,6 +22,8 @@ const { t } = useI18n()
 
 <style scoped>
 .site-header {
+  /* Home-screen app on iPhone/iPad: the status bar sits on top of the page. */
+  padding-top: env(safe-area-inset-top);
   background: var(--header-bg);
   border-bottom: 1px solid var(--line);
 }

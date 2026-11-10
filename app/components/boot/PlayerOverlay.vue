@@ -1,8 +1,19 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 
-const props = defineProps<{ saveStatus?: 'idle' | 'synced' | 'offline' | 'error' | null; savedAt?: number | null; saveNotice?: string | null }>()
-const emit = defineEmits<{ fullscreen: []; controls: []; leave: [] }>()
+const props = withDefaults(
+  defineProps<{
+    saveStatus?: 'idle' | 'synced' | 'offline' | 'error' | null
+    savedAt?: number | null
+    saveNotice?: string | null
+    /** False on iPhone, where pages cannot go fullscreen. */
+    canFullscreen?: boolean
+    /** The browser is holding the sound back until the screen is touched. */
+    soundBlocked?: boolean
+  }>(),
+  { canFullscreen: true, soundBlocked: false },
+)
+const emit = defineEmits<{ fullscreen: []; controls: []; leave: []; sound: [] }>()
 
 function time(ts: number) {
   return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -31,8 +42,9 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="overlay" :class="{ 'overlay--hidden': !visible }" @pointerenter="show">
-    <button type="button" class="overlay__btn" @click="emit('fullscreen')">{{ t('player.fullscreen') }}</button>
+  <div class="overlay" :class="{ 'overlay--hidden': !visible && !props.soundBlocked }" @pointerenter="show">
+    <button v-if="props.soundBlocked" type="button" class="overlay__btn overlay__btn--sound" data-sound-blocked @click="emit('sound')">{{ t('player.tapForSound') }}</button>
+    <button v-if="props.canFullscreen" type="button" class="overlay__btn" @click="emit('fullscreen')">{{ t('player.fullscreen') }}</button>
     <button type="button" class="overlay__btn" @click="emit('controls')">{{ t('player.controls') }}</button>
     <a href="/" class="overlay__btn" @click.prevent="emit('leave')">{{ t('player.library') }}</a>
     <span v-if="props.saveStatus && props.saveStatus !== 'idle'" class="overlay__save" data-save-status>
@@ -51,9 +63,11 @@ onBeforeUnmount(() => {
   left: 0;
   right: 0;
   display: flex;
+  flex-wrap: wrap;
   justify-content: center;
   gap: 8px;
-  padding: 10px;
+  /* Clear of the notch / camera cut-out and rounded corners. */
+  padding: max(10px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) 10px max(10px, env(safe-area-inset-left));
   transition: opacity 300ms ease;
   z-index: 3;
 }
@@ -71,6 +85,11 @@ onBeforeUnmount(() => {
 
 .overlay__save--notice {
   opacity: 1;
+}
+
+.overlay__btn--sound {
+  color: var(--overlay-bg);
+  background: var(--overlay-fg);
 }
 
 .overlay--hidden {

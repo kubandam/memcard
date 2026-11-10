@@ -42,7 +42,8 @@ button {
 .container {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 0 16px;
+  /* Phones held sideways: keep text clear of the notch. */
+  padding: 0 max(16px, env(safe-area-inset-right)) 0 max(16px, env(safe-area-inset-left));
 }
 
 .display {
