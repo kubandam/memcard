@@ -14,6 +14,7 @@ import { createStateSync } from '~/utils/stateSyncClient'
 import { fromBase64Url } from '~~/shared/utils/bytes'
 import type { SyncMeta } from '~~/shared/utils/saveSync'
 import { setSetting } from '~/utils/localDb'
+import { describeTransfer, type Transfer } from '~/utils/transfer'
 
 definePageMeta({ layout: 'boot' })
 
@@ -32,6 +33,20 @@ const controlsOpen = ref(false)
 const mapping = ref<KeyBinding[]>([])
 const saveSync = shallowRef<ReturnType<typeof createSaveSync> | null>(null)
 const saveNotice = ref<string | null>(null)
+/** Live download stats while a cloud / shared / free game is fetched. */
+const transfer = ref<Transfer | null>(null)
+
+function onTransfer(done: number, total: number, network: number) {
+  const now = performance.now()
+  transfer.value = transfer.value ? { ...transfer.value, done, total, network, at: now } : { done, total, network, startedAt: now, at: now }
+  setSubProgress('reading', 'loading', done / Math.max(1, total))
+}
+
+const bootDetail = computed(() => {
+  if (phase.value !== 'reading' || !transfer.value) return null
+  const d = describeTransfer(transfer.value)
+  return d.cached ? t('boot.fromCache', { percent: d.percent }) : t('boot.downloading', d)
+})
 
 interface BootHooks {
   onFsReady?: (fs: unknown, path: string) => void
@@ -106,7 +121,7 @@ async function loadCloud(gameId: string) {
   void cloud.markPlayed(game.id)
   title.value = game.title
   setPhase('reading')
-  const files = await cloud.downloadGameFiles(game, (done, total) => setSubProgress('reading', 'loading', done / Math.max(1, total)))
+  const files = await cloud.downloadGameFiles(game, onTransfer).finally(() => (transfer.value = null))
   const byName = new Map(files.map((f) => [f.name, f]))
   const pseudo: LocalGame = {
     id: game.id,
@@ -178,7 +193,7 @@ async function loadShared(gameId: string, shareId: string) {
   if (!game) return void (notFound.value = true)
   title.value = game.title
   setPhase('reading')
-  const files = await shared.downloadGameFiles(shareId, game, (done, total) => setSubProgress('reading', 'loading', done / Math.max(1, total)), lib.libraryId)
+  const files = await shared.downloadGameFiles(shareId, game, onTransfer, lib.libraryId).finally(() => (transfer.value = null))
   const byName = new Map(files.map((f) => [f.name, f]))
   await boot(
     {
@@ -213,8 +228,9 @@ async function loadFree(id: string) {
     if (done) break
     parts.push(value)
     got += value.length
-    setSubProgress('reading', 'loading', got / Math.max(1, game.sizeBytes))
+    onTransfer(got, game.sizeBytes, got)
   }
+  transfer.value = null
   const file = new File(parts as BlobPart[], game.file)
   const pseudo: LocalGame = {
     id: game.id,
@@ -321,7 +337,7 @@ function fullscreen() {
       </div>
     </template>
     <template v-else>
-      <BootStage :title="title" :phase="phase" :progress="progress" :error="error">
+      <BootStage :title="title" :phase="phase" :progress="progress" :error="error" :detail="bootDetail">
         <a href="/" class="exit-link" @click.prevent="leave">{{ t('player.backToLibrary') }}</a>
       </BootStage>
       <div id="game" class="game" />

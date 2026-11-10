@@ -3,7 +3,7 @@ import type { ClassifiedGame, GameFileRef, LocalGame } from '~~/shared/types/gam
 import type { UploadState } from './cloudUpload'
 
 export const DB_NAME = 'memcard'
-export const DB_VERSION = 2
+export const DB_VERSION = 3
 
 interface MemcardDb extends DBSchema {
   games: {
@@ -24,6 +24,22 @@ interface MemcardDb extends DBSchema {
     value: UploadState
     indexes: { libraryId: string }
   }
+  /** Encrypted parts of cloud games kept on this PC (key `<cacheId>/<part>`). */
+  cacheParts: {
+    key: string
+    value: Uint8Array
+  }
+  cacheIndex: {
+    key: string
+    value: CacheEntry
+  }
+}
+
+/** One cached cloud object: `id` = `<libraryId>/<objectKey>`. */
+export interface CacheEntry {
+  id: string
+  bytes: number
+  lastUsedAt: number
 }
 
 export type StorageErrorCode = 'quota' | 'unavailable'
@@ -52,6 +68,10 @@ export function openDb(): Promise<IDBPDatabase<MemcardDb>> {
         }
         if (oldVersion < 2) {
           db.createObjectStore('uploads', { keyPath: 'id' }).createIndex('libraryId', 'libraryId')
+        }
+        if (oldVersion < 3) {
+          db.createObjectStore('cacheParts')
+          db.createObjectStore('cacheIndex', { keyPath: 'id' })
         }
       },
     }).catch((err) => {
@@ -196,8 +216,16 @@ export async function deleteSetting(key: string): Promise<void> {
 
 export async function clearAll(): Promise<void> {
   const db = await openDb()
-  const tx = db.transaction(['games', 'blobs', 'settings', 'uploads'], 'readwrite')
-  await Promise.all([tx.objectStore('games').clear(), tx.objectStore('blobs').clear(), tx.objectStore('settings').clear(), tx.objectStore('uploads').clear(), tx.done])
+  const tx = db.transaction(['games', 'blobs', 'settings', 'uploads', 'cacheParts', 'cacheIndex'], 'readwrite')
+  await Promise.all([
+    tx.objectStore('games').clear(),
+    tx.objectStore('blobs').clear(),
+    tx.objectStore('settings').clear(),
+    tx.objectStore('uploads').clear(),
+    tx.objectStore('cacheParts').clear(),
+    tx.objectStore('cacheIndex').clear(),
+    tx.done,
+  ])
 }
 
 export async function estimateStorage(): Promise<{ usage: number; quota: number } | null> {

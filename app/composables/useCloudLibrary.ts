@@ -11,6 +11,7 @@ import type { SharePayload } from '~~/shared/types/share'
 import { ApiError, createCloudApi, type CloudApi } from '~/utils/cloudApi'
 import { ResumeMismatchError, UploadCancelledError, uploadObject } from '~/utils/cloudUpload'
 import { DecryptError, downloadObject } from '~/utils/cloudDownload'
+import { createGameCache } from '~/utils/gameCache'
 import { createStateSync } from '~/utils/stateSyncClient'
 import { StorageError } from '~/utils/localDb'
 import { addGame, deleteSetting, deleteUploadState, getBlob, getGame, getSetting, getUploadStates, putUploadState, setCover, setSetting } from '~/utils/localDb'
@@ -566,15 +567,26 @@ export function useCloudLibrary() {
   }
 
   /** Downloads and decrypts every file of a cloud game into named Files (in memory). */
-  async function downloadGameFiles(game: CloudGame, onProgress?: (done: number, total: number) => void): Promise<File[]> {
+  /** Downloads and decrypts a game; parts come from this PC's encrypted cache when it has them. */
+  async function downloadGameFiles(game: CloudGame, onProgress?: (done: number, total: number, network: number) => void): Promise<File[]> {
     const { api } = requireOpen()
     const kGame = fromBase64Url(game.kGame)
+    const cache = s.libraryId.value ? createGameCache(s.libraryId.value) : undefined
     const out: File[] = []
     let before = 0
+    let beforeNet = 0
     for (const ref of game.files) {
-      const bytes = await downloadObject(api, ref, kGame, (d) => onProgress?.(before + d, game.sizeBytes))
+      let net = 0
+      const bytes = await downloadObject(api, ref, kGame, {
+        cache,
+        onProgress: (p) => {
+          net = p.network
+          onProgress?.(before + p.done, game.sizeBytes, beforeNet + p.network)
+        },
+      })
       out.push(new File([bytes as BlobPart], ref.name))
       before += ref.size
+      beforeNet += net
     }
     return out
   }

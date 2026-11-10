@@ -7,6 +7,7 @@ import { deriveShareKeys, formatShareCode, parseShareCode, unwrapPayload } from 
 import { validateCloudGame } from '~~/shared/utils/validateGame'
 import { ApiError, createShareReader, lookupShare, type ShareLookup, type ShareReader } from '~/utils/cloudApi'
 import { DecryptError, downloadObject } from '~/utils/cloudDownload'
+import { createGameCache } from '~/utils/gameCache'
 import { addGame, getSetting, setCover, setSetting } from '~/utils/localDb'
 
 /** The share code no longer works (revoked by the owner, or the game was deleted). */
@@ -194,16 +195,27 @@ export function useSharedLibraries() {
   }
 
   /** Downloads and decrypts every file of a shared game into memory. */
-  async function downloadGameFiles(shareId: string, game: CloudGame, onProgress?: (done: number, total: number) => void, libraryId?: string): Promise<File[]> {
-    const reader = transport.reader(shareId, libraryIdFor(shareId, libraryId))
+  async function downloadGameFiles(shareId: string, game: CloudGame, onProgress?: (done: number, total: number, network: number) => void, libraryId?: string): Promise<File[]> {
+    const libId = libraryIdFor(shareId, libraryId)
+    const reader = transport.reader(shareId, libId)
+    const cache = createGameCache(libId)
     const kGame = fromBase64Url(game.kGame)
     const out: File[] = []
     let before = 0
+    let beforeNet = 0
     try {
       for (const ref of game.files) {
-        const bytes = await downloadObject(reader, ref, kGame, (d) => onProgress?.(before + d, game.sizeBytes))
+        let net = 0
+        const bytes = await downloadObject(reader, ref, kGame, {
+          cache,
+          onProgress: (p) => {
+            net = p.network
+            onProgress?.(before + p.done, game.sizeBytes, beforeNet + p.network)
+          },
+        })
         out.push(new File([bytes as BlobPart], ref.name))
         before += ref.size
+        beforeNet += net
       }
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) {

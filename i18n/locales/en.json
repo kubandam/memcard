@@ -98,7 +98,9 @@
     "loading": "Loading emulator",
     "starting": "Starting",
     "running": "Running",
-    "error": "Error"
+    "error": "Error",
+    "downloading": "Downloading · {done} / {total} · {speed} · {eta} left",
+    "fromCache": "Loading from this PC · {percent}%"
   },
   "player": {
     "title": "Player",
@@ -133,9 +135,12 @@
     "persisted": "This browser has granted persistent storage: your games will not be evicted automatically.",
     "notPersisted": "Persistent storage not granted yet. The browser may clear games if space runs low.",
     "clear": "Clear local data",
-    "clearConfirm": "Really delete all local games, saves and BIOS?",
+    "clearConfirm": "Really delete all local games, saves, BIOS and cached online games?",
     "cleared": "All local data was removed.",
-    "controls": "Controls"
+    "controls": "Controls",
+    "cache": "Online games kept on this PC for faster starts (still encrypted): {used} of {limit}.",
+    "cacheClear": "Clear",
+    "cacheCleared": "Cached online games were removed from this PC."
   },
   "covers": {
     "notFound": "No box art found for \"{title}\". You can add your own image with Cover.",

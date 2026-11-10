@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { EmulatorPhase } from '~/composables/useEmulator'
 
-const props = defineProps<{ title: string; phase: EmulatorPhase; progress: number; error?: string | null }>()
+const props = defineProps<{ title: string; phase: EmulatorPhase; progress: number; error?: string | null; detail?: string | null }>()
 const { t } = useI18n()
 </script>
 
@@ -19,6 +19,7 @@ const { t } = useI18n()
       </div>
       <p class="boot__status">
         <template v-if="phase === 'error'">{{ props.error }}</template>
+        <template v-else-if="props.detail">{{ props.detail }}</template>
         <template v-else>{{ t(`boot.${phase}`) }} · {{ Math.round(progress * 100) }}%</template>
       </p>
       <slot />

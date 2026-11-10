@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { DEFAULT_KEYS, RETROPAD_PS1_LABELS } from '~/utils/emulatorjs'
+import { clearGameCache, gameCacheUsage, GAME_CACHE_LIMIT } from '~/utils/gameCache'
+import { formatBytes } from '~/utils/format'
 import { StorageError, clearAll, deleteBlob, deleteSetting, estimateStorage, getSetting, putBlob, setSetting } from '~/utils/localDb'
 
 definePageMeta({ layout: 'shelf' })
@@ -12,6 +14,7 @@ const storage = ref<{ usage: number; quota: number } | null>(null)
 const persisted = ref<boolean | null>(null)
 const notice = ref<{ kind: 'error' | 'info'; key: string } | null>(null)
 const confirmingClear = ref(false)
+const cacheBytes = ref(0)
 
 const defaultKeys = computed(() =>
   Object.entries(RETROPAD_PS1_LABELS)
@@ -22,6 +25,7 @@ const defaultKeys = computed(() =>
 async function load() {
   biosName.value = (await getSetting<string>('biosName')) ?? null
   storage.value = await estimateStorage()
+  cacheBytes.value = await gameCacheUsage()
   try {
     persisted.value = (await navigator.storage?.persisted?.()) ?? null
   } catch {
@@ -57,6 +61,12 @@ async function removeBios() {
   await deleteSetting('bios')
   await deleteSetting('biosName')
   biosName.value = null
+  await load()
+}
+
+async function onClearCache() {
+  await clearGameCache().catch(() => undefined)
+  notice.value = { kind: 'info', key: 'settings.cacheCleared' }
   await load()
 }
 
@@ -98,6 +108,10 @@ async function onClear() {
     <StorageMeter v-if="storage" :usage="storage.usage" :quota="storage.quota" />
     <p v-else class="settings__text">{{ t('settings.storageUnknown') }}</p>
     <p v-if="persisted !== null" class="settings__text">{{ persisted ? t('settings.persisted') : t('settings.notPersisted') }}</p>
+    <p class="settings__text" data-cache>
+      {{ t('settings.cache', { used: formatBytes(cacheBytes), limit: formatBytes(GAME_CACHE_LIMIT) }) }}
+      <button v-if="cacheBytes > 0" type="button" data-clear-cache class="link-button label" @click="onClearCache">{{ t('settings.cacheClear') }}</button>
+    </p>
     <button type="button" data-clear class="settings__danger label" @click="onClear">
       {{ confirmingClear ? t('settings.clearConfirm') : t('settings.clear') }}
     </button>

@@ -46,6 +46,15 @@ test('create, upload, open on a second PC, play from cloud, download, wrong pass
   // Play straight from the cloud.
   await a.locator('.cloud-library a[href^="/play/cloud/"]').click()
   await a.waitForFunction(() => document.documentElement.dataset.phase === 'running', null, { timeout: 90_000 })
+
+  // Second start on the same PC comes from the encrypted cache: no game bytes over the network.
+  const playUrl = a.url()
+  const objectFetches: string[] = []
+  a.on('request', (r) => { if (/\/api\/lib\/[^/]+\/objects\//.test(r.url())) objectFetches.push(r.url()) })
+  await a.goto('/')
+  await a.goto(playUrl)
+  await a.waitForFunction(() => document.documentElement.dataset.phase === 'running', null, { timeout: 90_000 })
+  expect(objectFetches).toEqual([])
   await pc1.close()
 
   // PC 2: fresh browser profile — nothing local, open with the passphrase.
