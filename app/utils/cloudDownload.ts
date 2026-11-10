@@ -9,10 +9,10 @@ export class DecryptError extends Error {
   }
 }
 
-/** Encrypted chunks fetched per request (= one 16 MiB part). */
-export const CHUNKS_PER_REQUEST = 4
-/** Parts fetched at once: one connection is slow (~1–2 MB/s through the Worker), several fill the line. */
-export const DOWNLOAD_CONCURRENCY = 4
+/** Encrypted chunks fetched per request (one 4 MiB chunk: small enough for smooth progress). */
+export const CHUNKS_PER_REQUEST = 1
+/** Requests in flight at once: one connection is slow (~1–2 MB/s through the Worker), several fill the line. */
+export const DOWNLOAD_CONCURRENCY = 6
 const ENC_CHUNK = CHUNK_SIZE + GCM_TAG
 
 /**

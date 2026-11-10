@@ -61,7 +61,7 @@ describe('game cache', () => {
     const { api, ranges, kGame, plain, ref } = await stored(40 * MiB)
     const cache = createGameCache('lib1')
     await downloadObject(api, ref, kGame, { cache })
-    expect(ranges).toHaveLength(3)
+    expect(ranges).toHaveLength(10)
     ranges.length = 0
     let network = -1
     const back = await downloadObject(api, ref, kGame, { cache, onProgress: (p) => (network = p.network) })
@@ -76,7 +76,7 @@ describe('game cache', () => {
     await downloadObject(api, ref, kGame, { cache: createGameCache('lib1') })
     const db = await openDb()
     const parts = await db.getAll('cacheParts')
-    expect(parts).toHaveLength(1)
+    expect(parts).toHaveLength(2)
     expect(Buffer.from(parts[0]!).includes(Buffer.from(plain.subarray(0, 4096)))).toBe(false)
   })
 

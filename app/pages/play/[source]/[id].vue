@@ -36,6 +36,12 @@ const saveNotice = ref<string | null>(null)
 /** Live download stats while a cloud / shared / free game is fetched. */
 const transfer = ref<Transfer | null>(null)
 
+/** Shows "Downloading" right away and starts the clock for speed / time left. */
+function startTransfer(total: number) {
+  const now = performance.now()
+  transfer.value = { done: 0, total, network: 0, startedAt: now, at: now }
+}
+
 function onTransfer(done: number, total: number, network: number) {
   const now = performance.now()
   transfer.value = transfer.value ? { ...transfer.value, done, total, network, at: now } : { done, total, network, startedAt: now, at: now }
@@ -121,6 +127,7 @@ async function loadCloud(gameId: string) {
   void cloud.markPlayed(game.id)
   title.value = game.title
   setPhase('reading')
+  startTransfer(game.sizeBytes)
   const files = await cloud.downloadGameFiles(game, onTransfer).finally(() => (transfer.value = null))
   const byName = new Map(files.map((f) => [f.name, f]))
   const pseudo: LocalGame = {
@@ -193,6 +200,7 @@ async function loadShared(gameId: string, shareId: string) {
   if (!game) return void (notFound.value = true)
   title.value = game.title
   setPhase('reading')
+  startTransfer(game.sizeBytes)
   const files = await shared.downloadGameFiles(shareId, game, onTransfer, lib.libraryId).finally(() => (transfer.value = null))
   const byName = new Map(files.map((f) => [f.name, f]))
   await boot(
@@ -218,6 +226,7 @@ async function loadFree(id: string) {
   if (!game) return void (notFound.value = true)
   title.value = game.title
   setPhase('reading')
+  startTransfer(game.sizeBytes)
   const res = await fetch(`/api/free/${game.id}/file`)
   if (!res.ok || !res.body) throw new ApiError(res.status || 503)
   const reader = res.body.getReader()
