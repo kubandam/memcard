@@ -16,6 +16,7 @@ import type { SyncMeta } from '~~/shared/utils/saveSync'
 import { setSetting } from '~/utils/localDb'
 import { describeTransfer, type Transfer } from '~/utils/transfer'
 import { createAutoSave } from '~/utils/autoSave'
+import { PICTURE_SETTING, shaderFor } from '~/utils/display'
 import { RIGHT_STICK_MODES, setRightStickMode, type RightStickMode } from '~/utils/gamepadFix'
 
 definePageMeta({ layout: 'boot' })
@@ -135,7 +136,8 @@ async function boot(game: LocalGame, getter: BlobGetter, hooks: BootHooks = {}) 
   if (game.kind === 'multi') setPhase('packing')
   const payload = await buildGamePayload(game, getter, (f) => setSubProgress(game.kind === 'multi' ? 'packing' : 'reading', 'loading', f))
   const bios = await readBiosBytes()
-  start({ file: payload.file, extraFiles: payload.extraFiles, bios, gameName: game.primaryName, base: emulatorjsBase, color: ejsColor(), ...hooks })
+  const shader = shaderFor(await getSetting(PICTURE_SETTING).catch(() => undefined))
+  start({ file: payload.file, extraFiles: payload.extraFiles, bios, shader, gameName: game.primaryName, base: emulatorjsBase, color: ejsColor(), ...hooks })
 }
 
 async function loadLocal(game: LocalGame) {

@@ -66,6 +66,8 @@ export interface StartOptions extends EjsOptions {
   onStateLoadRequested?: () => void
   /** Runs once the game is running. */
   onStarted?: () => void
+  /** EmulatorJS shader to switch on at start ('disabled' = sharp pixels); undefined leaves the emulator's own choice. */
+  shader?: string
 }
 
 /** Where pcsx_rearmed keeps the memory card for a given EJS_gameName. */
@@ -128,7 +130,7 @@ export function useEmulator() {
       fail('An emulator is already running on this page. Reload to start another game.')
       return
     }
-    const { bios, extraFiles = [], onFsReady, onCardSaved, onStateSaved, onStateLoadRequested, onStarted, ...ejs } = opts
+    const { bios, extraFiles = [], onFsReady, onCardSaved, onStateSaved, onStateLoadRequested, onStarted, shader, ...ejs } = opts
     // Defense in depth: only plain files directly in the FS root (never ../ or nested paths).
     if (extraFiles.some((f) => !f.path.startsWith('/') || !isSafeFileName(f.path.slice(1)))) {
       fail('This game contains a file name that is not allowed, so it was not started.')
@@ -199,6 +201,14 @@ export function useEmulator() {
           usePlayStationLayout(running)
         } catch {
           // Never let the controller layout stop the game.
+        }
+      }
+      if (shader) {
+        try {
+          const emu = emulator() as { changeSettingOption?: (k: string, v: string) => void } | undefined
+          emu?.changeSettingOption?.('shader', shader)
+        } catch {
+          // A picture filter is never worth stopping the game for.
         }
       }
       try {

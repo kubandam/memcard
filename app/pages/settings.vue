@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { DEFAULT_KEYS, RETROPAD_PS1_LABELS } from '~/utils/emulatorjs'
 import { clearGameCache, gameCacheUsage, GAME_CACHE_LIMIT } from '~/utils/gameCache'
 import { formatBytes } from '~/utils/format'
+import { PICTURE_SETTING, PICTURE_STYLES, type PictureStyle } from '~/utils/display'
 import { StorageError, clearAll, deleteBlob, deleteSetting, estimateStorage, getSetting, putBlob, setSetting } from '~/utils/localDb'
 
 definePageMeta({ layout: 'shelf' })
@@ -15,6 +16,8 @@ const persisted = ref<boolean | null>(null)
 const notice = ref<{ kind: 'error' | 'info'; key: string } | null>(null)
 const confirmingClear = ref(false)
 const cacheBytes = ref(0)
+const picture = ref<PictureStyle>('sharp')
+const pictureStyles = Object.keys(PICTURE_STYLES) as PictureStyle[]
 
 const defaultKeys = computed(() =>
   Object.entries(RETROPAD_PS1_LABELS)
@@ -24,8 +27,11 @@ const defaultKeys = computed(() =>
 
 async function load() {
   biosName.value = (await getSetting<string>('biosName')) ?? null
+  const savedPicture = await getSetting<string>(PICTURE_SETTING).catch(() => undefined)
+  if (savedPicture && Object.hasOwn(PICTURE_STYLES, savedPicture)) picture.value = savedPicture as PictureStyle
   storage.value = await estimateStorage()
-  cacheBytes.value = await gameCacheUsage()
+  // The cache size is informative only; never hold the page on it.
+  void gameCacheUsage().then((bytes) => (cacheBytes.value = bytes))
   try {
     persisted.value = (await navigator.storage?.persisted?.()) ?? null
   } catch {
@@ -64,6 +70,11 @@ async function removeBios() {
   await load()
 }
 
+async function choosePicture(style: PictureStyle) {
+  picture.value = style
+  await setSetting(PICTURE_SETTING, style).catch(() => undefined)
+}
+
 async function onClearCache() {
   await clearGameCache().catch(() => undefined)
   notice.value = { kind: 'info', key: 'settings.cacheCleared' }
@@ -92,6 +103,22 @@ async function onClear() {
 
     <SectionLabel>{{ t('settings.theme') }}</SectionLabel>
     <ThemeToggle />
+
+    <SectionLabel>{{ t('settings.picture') }}</SectionLabel>
+    <div class="segments" role="group" :aria-label="t('settings.picture')">
+      <button
+        v-for="style in pictureStyles"
+        :key="style"
+        type="button"
+        class="segments__item label"
+        :data-picture="style"
+        :aria-pressed="picture === style"
+        @click="choosePicture(style)"
+      >
+        {{ t(`settings.pictureStyle.${style}`) }}
+      </button>
+    </div>
+    <p class="settings__text settings__muted">{{ t('settings.pictureHint') }}</p>
 
     <SectionLabel>{{ t('settings.bios') }}</SectionLabel>
     <p class="settings__text">{{ t('settings.biosOptional') }}</p>
@@ -166,6 +193,33 @@ async function onClear() {
   border-radius: 999px;
   padding: 10px 18px;
   cursor: pointer;
+}
+
+.segments {
+  display: inline-flex;
+  flex-wrap: wrap;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+
+.segments__item {
+  background: transparent;
+  color: var(--fg-muted);
+  border: 0;
+  padding: 10px 16px;
+  min-height: 40px;
+  cursor: pointer;
+}
+
+.segments__item[aria-pressed='true'] {
+  background: var(--fg);
+  color: var(--bg-panel);
+}
+
+.settings__muted {
+  color: var(--fg-muted);
 }
 
 .link-button {

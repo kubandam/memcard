@@ -36,6 +36,17 @@ describe('settings page', () => {
     db.clearAll.mockClear()
   })
 
+  it('picture style: shows the saved one and stores a new choice', async () => {
+    db.settings.set('display.picture', 'crt')
+    const wrapper = await mountSuspended(SettingsPage)
+    await flushPromises()
+    expect(wrapper.find('[data-picture=crt]').attributes('aria-pressed')).toBe('true')
+    await wrapper.find('[data-picture=smooth]').trigger('click')
+    await flushPromises()
+    expect(db.settings.get('display.picture')).toBe('smooth')
+    expect(wrapper.find('[data-picture=smooth]').attributes('aria-pressed')).toBe('true')
+  })
+
   it('stores a BIOS file and shows its name', async () => {
     const wrapper = await mountSuspended(SettingsPage)
     await flushPromises()

@@ -159,7 +159,15 @@
     "controls": "Controls",
     "cache": "Online games kept on this PC for faster starts (still encrypted): {used} of {limit}.",
     "cacheClear": "Clear",
-    "cacheCleared": "Cached online games were removed from this PC."
+    "cacheCleared": "Cached online games were removed from this PC.",
+    "picture": "Picture",
+    "pictureStyle": {
+      "sharp": "Sharp pixels",
+      "smooth": "Smooth",
+      "crt": "CRT",
+      "crtCurved": "CRT curved"
+    },
+    "pictureHint": "Applies to every game from its next start. CRT adds scanlines like an old TV; CRT curved also bends the screen."
   },
   "covers": {
     "notFound": "No box art found for \"{title}\". You can add your own image with Cover.",
