@@ -137,7 +137,7 @@ describe('useEmulator — save states', () => {
   })
   afterEach(() => vi.restoreAllMocks())
 
-  it('takes over Save/Load State, runs onStarted, and loadState feeds the core', () => {
+  it('takes over Save/Load State, runs onStarted, and loadState feeds the core', async () => {
     const saved: unknown[] = []
     let loadRequested = 0
     let started = 0
@@ -149,11 +149,39 @@ describe('useEmulator — save states', () => {
     emu.fire('saveState', { state: new Uint8Array([1]), screenshot: new Uint8Array([2]), format: 'png' })
     emu.fire('loadState')
     w().EJS_onGameStart!()
+    await Promise.resolve()
+    await Promise.resolve()
     expect(saved).toEqual([{ state: new Uint8Array([1]), screenshot: new Uint8Array([2]) }])
     expect(loadRequested).toBe(1)
     expect(started).toBe(1)
     emu.gameManager = { saveSaveFiles: vi.fn(), FS: emu.FS, loadState: vi.fn() } as never
     expect(loadState(new Uint8Array([9]))).toBe(true)
     expect(emu.gameManager!.loadState).toHaveBeenCalledWith(new Uint8Array([9]))
+  })
+
+  it('EmulatorJS 4.2.3 gives no screenshot: the core picture is taken instead', async () => {
+    const saved: Array<{ state: Uint8Array; screenshot: Uint8Array | null }> = []
+    const { start } = useEmulator()
+    start({ ...base, onStateSaved: (s) => void saved.push(s) })
+    const emu = fakeEmulator() as ReturnType<typeof fakeEmulator> & { gameManager?: unknown }
+    w().EJS_emulator = emu
+    w().EJS_ready!(emu)
+    emu.gameManager = { screenshot: async () => new Uint8Array([7, 7]) }
+    emu.fire('saveState', { state: new Uint8Array([1]), format: 'png' })
+    await vi.waitFor(() => expect(saved).toHaveLength(1))
+    expect(saved[0]).toEqual({ state: new Uint8Array([1]), screenshot: new Uint8Array([7, 7]) })
+  })
+
+  it('captureState returns the running game with a picture, and null before it runs', async () => {
+    const { start, captureState } = useEmulator()
+    start(base)
+    const emu = fakeEmulator() as ReturnType<typeof fakeEmulator> & { gameManager?: unknown; started?: boolean }
+    w().EJS_emulator = emu
+    w().EJS_ready!(emu)
+    expect(await captureState()).toBeNull()
+    emu.gameManager = { getState: () => new Uint8Array([5]), screenshot: async () => new Uint8Array([6]) }
+    emu.started = true
+    w().EJS_onGameStart!()
+    expect(await captureState()).toEqual({ state: new Uint8Array([5]), screenshot: new Uint8Array([6]) })
   })
 })

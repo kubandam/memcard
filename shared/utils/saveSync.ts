@@ -16,16 +16,22 @@ export interface SyncMeta {
   hash: string
 }
 
-/** FNV-1a 64-bit as 16 hex chars — synchronous so it can run inside EmulatorJS's sync FS hook. */
+/**
+ * FNV-1a 64-bit as 16 hex chars — synchronous so it can run inside EmulatorJS's sync FS hook.
+ * Computed in two 32-bit halves (same result as BigInt, ~50× faster: save states are megabytes and
+ * are hashed while the game runs). prime = 2^40 + 0x1b3, so h·prime = (h << 40) + h·0x1b3 (mod 2^64).
+ */
 export function fingerprint(bytes: Uint8Array): string {
-  let h = 0xcbf29ce484222325n
-  const prime = 0x100000001b3n
-  const mask = 0xffffffffffffffffn
-  for (const b of bytes) {
-    h ^= BigInt(b)
-    h = (h * prime) & mask
+  let hi = 0xcbf29ce4
+  let lo = 0x84222325
+  for (let i = 0; i < bytes.length; i++) {
+    lo = (lo ^ bytes[i]!) >>> 0
+    const p = lo * 0x1b3 // < 2^41: exact in a double
+    const carry = Math.floor(p / 0x100000000)
+    hi = (Math.imul(hi, 0x1b3) + carry + (lo << 8)) >>> 0
+    lo = p >>> 0
   }
-  return h.toString(16).padStart(16, '0')
+  return hi.toString(16).padStart(8, '0') + lo.toString(16).padStart(8, '0')
 }
 
 export async function deriveSaveKeys(kGame: Uint8Array): Promise<{ saveKey: string; key: CryptoKey }> {

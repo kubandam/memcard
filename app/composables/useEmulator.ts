@@ -35,8 +35,17 @@ interface EmulatorInstance {
   on?: (event: string, fn: (...args: unknown[]) => void) => void
   startGameError?: (message: string) => void
   started?: boolean
-  gameManager?: { saveSaveFiles?: () => void; FS?: { writeFile: (path: string, data: Uint8Array) => void } }
+  gameManager?: {
+    saveSaveFiles?: () => void
+    FS?: { writeFile: (path: string, data: Uint8Array) => void }
+    getState?: () => Uint8Array
+    screenshot?: () => Promise<Uint8Array>
+  }
+  paused?: boolean
 }
+
+/** Longest wait for the core's screenshot; a state without a picture is still worth saving. */
+const SHOT_TIMEOUT_MS = 3000
 
 interface FsLike {
   writeFile: (path: string, data: Uint8Array) => void
@@ -158,8 +167,11 @@ export function useEmulator() {
         instance.on('saveState', (e) => {
           const ev = e as { state?: Uint8Array; screenshot?: Uint8Array | ArrayBuffer | null }
           if (!(ev?.state instanceof Uint8Array)) return
-          const shot = ev.screenshot instanceof Uint8Array ? ev.screenshot : ev.screenshot ? new Uint8Array(ev.screenshot) : null
-          onStateSaved({ state: ev.state, screenshot: shot })
+          const state = ev.state
+          // EmulatorJS 4.2.3 reads `screenshot` from takeScreenshot(), which returns `blob`: it is always
+          // undefined here, so take the picture from the core ourselves.
+          const given = ev.screenshot instanceof Uint8Array ? ev.screenshot : ev.screenshot ? new Uint8Array(ev.screenshot) : null
+          void (given ? Promise.resolve(given) : captureShot()).then((screenshot) => onStateSaved({ state, screenshot }))
         })
       }
       if (instance?.on && onStateLoadRequested) instance.on('loadState', () => onStateLoadRequested())
@@ -216,6 +228,32 @@ export function useEmulator() {
   }
 
   /** Loads a save state into the running core. Returns false when the core is not ready. */
+  /** The core's own PNG of the current frame (native resolution, small), or null. */
+  async function captureShot(): Promise<Uint8Array | null> {
+    const gm = emulator()?.gameManager
+    if (!gm?.screenshot) return null
+    try {
+      const shot = await Promise.race([gm.screenshot(), new Promise<null>((r) => setTimeout(() => r(null), SHOT_TIMEOUT_MS))])
+      return shot instanceof Uint8Array && shot.length ? shot : null
+    } catch {
+      return null
+    }
+  }
+
+  /** Snapshot of the running game for auto-save, or null when there is nothing to save. */
+  async function captureState(): Promise<{ state: Uint8Array; screenshot: Uint8Array | null } | null> {
+    const emu = emulator()
+    if (phase.value !== 'running' || !emu?.started || !emu.gameManager?.getState) return null
+    let state: Uint8Array
+    try {
+      state = emu.gameManager.getState()
+    } catch {
+      return null
+    }
+    if (!(state instanceof Uint8Array) || !state.length) return null
+    return { state, screenshot: await captureShot() }
+  }
+
   function loadState(state: Uint8Array): boolean {
     const gm = emulator()?.gameManager as { loadState?: (s: Uint8Array) => void } | undefined
     if (!gm?.loadState) return false
@@ -227,5 +265,5 @@ export function useEmulator() {
     }
   }
 
-  return { phase, progress, error, setPhase, setSubProgress, fail, start, onSaveExport, flushSaves, loadState }
+  return { phase, progress, error, setPhase, setSubProgress, fail, start, onSaveExport, flushSaves, loadState, captureState }
 }

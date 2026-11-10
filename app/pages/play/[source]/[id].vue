@@ -15,6 +15,7 @@ import { fromBase64Url } from '~~/shared/utils/bytes'
 import type { SyncMeta } from '~~/shared/utils/saveSync'
 import { setSetting } from '~/utils/localDb'
 import { describeTransfer, type Transfer } from '~/utils/transfer'
+import { createAutoSave } from '~/utils/autoSave'
 
 definePageMeta({ layout: 'boot' })
 
@@ -25,7 +26,7 @@ const { public: { emulatorjsBase } } = useRuntimeConfig()
 const source = computed(() => String(route.params.source))
 const id = computed(() => String(route.params.id))
 
-const { phase, progress, error, setPhase, setSubProgress, fail, start, onSaveExport, flushSaves, loadState } = useEmulator()
+const { phase, progress, error, setPhase, setSubProgress, fail, start, onSaveExport, flushSaves, loadState, captureState } = useEmulator()
 const title = ref('')
 const notFound = ref(false)
 const libraryClosed = ref(false)
@@ -33,6 +34,10 @@ const controlsOpen = ref(false)
 const mapping = ref<KeyBinding[]>([])
 const saveSync = shallowRef<ReturnType<typeof createSaveSync> | null>(null)
 const saveNotice = ref<string | null>(null)
+/** Cloud games only: the state slot is refreshed every few minutes, when the tab hides and on exit. */
+let autoSave: ReturnType<typeof createAutoSave> | null = null
+/** Longest the exit waits for the final auto-save before navigating anyway. */
+const EXIT_SAVE_WAIT_MS = 8000
 /** Live download stats while a cloud / shared / free game is fetched. */
 const transfer = ref<Transfer | null>(null)
 
@@ -180,12 +185,18 @@ async function loadCloud(gameId: string) {
       const latest = await states.loadLatest()
       saveNotice.value = latest && loadState(latest) ? t('state.loaded') : t('state.none')
     },
-    onStarted: resume
-      ? async () => {
-          const latest = await states.loadLatest()
-          if (latest && loadState(latest)) saveNotice.value = t('state.resumed')
-        }
-      : undefined,
+    onStarted: async () => {
+      if (resume) {
+        const latest = await states.loadLatest()
+        if (latest && loadState(latest)) saveNotice.value = t('state.resumed')
+      }
+      autoSave = createAutoSave({
+        capture: captureState,
+        save: (snap) => states.save(snap),
+        idle: () => document.visibilityState !== 'visible' || Boolean((window as unknown as { EJS_emulator?: { paused?: boolean } }).EJS_emulator?.paused),
+      })
+      autoSave.start()
+    },
   })
 }
 
@@ -306,21 +317,39 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   window.removeEventListener('pagehide', flushSaves)
   document.removeEventListener('visibilitychange', onVisibility)
+  autoSave?.stop()
 })
 
 function onVisibility() {
-  if (document.visibilityState === 'hidden') flushSaves()
+  if (document.visibilityState !== 'hidden') return
+  flushSaves()
+  // Best effort: a tab being closed may not get to finish this upload.
+  void autoSave?.run()
 }
 
-/** EmulatorJS has no teardown: every exit from this page is a full navigation, Back button included. */
-onBeforeRouteLeave((to) => {
+/** Saves the game to the cloud slot before leaving (bounded wait), so Continue picks up right here. */
+async function saveBeforeExit() {
   flushSaves()
+  if (!autoSave) return
+  autoSave.stop()
+  saveNotice.value = t('state.autoSaving')
+  saveNotice.value = (await autoSave.runWithin(EXIT_SAVE_WAIT_MS)) ? t('state.autoSaved') : t('state.offline')
+}
+
+let leaving = false
+/** EmulatorJS has no teardown: every exit from this page is a full navigation, Back button included. */
+onBeforeRouteLeave(async (to) => {
+  if (leaving) return false
+  leaving = true
+  await saveBeforeExit()
   window.location.assign(to.fullPath)
   return false
 })
 
-function leave() {
-  flushSaves()
+async function leave() {
+  if (leaving) return
+  leaving = true
+  await saveBeforeExit()
   window.location.assign('/')
 }
 

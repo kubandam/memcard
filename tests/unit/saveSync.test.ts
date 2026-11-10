@@ -32,11 +32,24 @@ describe('save crypto', () => {
     await expect(openSave(g.key, other.saveKey, sealed)).rejects.toThrow()
   })
 
+  it('fingerprint equals the BigInt FNV-1a 64 it replaced (existing sync metadata stays valid)', () => {
+    const reference = (bytes: Uint8Array) => {
+      let h = 0xcbf29ce484222325n
+      for (const b of bytes) h = ((h ^ BigInt(b)) * 0x100000001b3n) & 0xffffffffffffffffn
+      return h.toString(16).padStart(16, '0')
+    }
+    const rnd = new Uint8Array(4096)
+    for (let i = 0; i < rnd.length; i++) rnd[i] = (i * 2654435761) >>> 24
+    for (const sample of [new Uint8Array(0), new Uint8Array([0]), new Uint8Array([255, 1, 128]), rnd, new Uint8Array(1000).fill(255)]) {
+      expect(fingerprint(sample)).toBe(reference(sample))
+    }
+  })
+
   it('fingerprint handles megabytes quickly', () => {
     const big = new Uint8Array(16 * 1024 * 1024).fill(3)
     const t = performance.now()
     expect(fingerprint(big)).toMatch(/^[0-9a-f]{16}$/)
-    expect(performance.now() - t).toBeLessThan(1500)
+    expect(performance.now() - t).toBeLessThan(400)
   })
 
   it('fingerprint is a 16-char hex and differs for different cards', () => {

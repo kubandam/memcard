@@ -249,7 +249,9 @@
     "offline": "Snapshot not saved to the cloud (offline?)",
     "loaded": "Snapshot loaded",
     "none": "No snapshot in the cloud yet",
-    "resumed": "Continuing from your last snapshot"
+    "resumed": "Continuing from your last snapshot",
+    "autoSaving": "Saving your progress…",
+    "autoSaved": "Progress saved — Continue picks up here on any PC"
   },
   "hero": {
     "label": "Continue playing",
