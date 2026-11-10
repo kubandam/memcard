@@ -88,14 +88,20 @@ export interface VirtualPadEmulatorLike {
   toggleVirtualGamepad?: (show: boolean) => void
 }
 
+/** Touches on these are the player using the page's own controls, not asking for a touch pad. */
+const NOT_THE_GAME = 'button, a, input, label, [role=dialog], .overlay, .sound-pill, .ejs_menu_bar, .ejs_virtualGamepad_parent, .ejs_popup_container, .ejs_settings_parent'
+
 /**
- * Shows / hides EmulatorJS's on-screen pad now and whenever a controller (dis)connects.
- * `onChange` gets the new state (the page centres the picture when the pad is hidden).
+ * Drives EmulatorJS's on-screen pad. A game starts clean: browsers only reveal a controller after
+ * one of its buttons is pressed, so "no controller yet" says nothing at start. The pad appears once
+ * the player touches the game itself on a touch screen with no controller, and goes away the moment
+ * a controller shows up. `onChange` gets the new state (the page centres the picture without it).
  * Returns a function that stops watching.
  */
 export function watchVirtualGamepad(emu: VirtualPadEmulatorLike, onChange?: (shown: boolean) => void, win: Window = window): () => void {
+  let touched = false
   const sync = () => {
-    const show = wantsVirtualGamepad(win.navigator, typeof win.matchMedia === 'function' ? win.matchMedia.bind(win) : undefined)
+    const show = touched && wantsVirtualGamepad(win.navigator, typeof win.matchMedia === 'function' ? win.matchMedia.bind(win) : undefined)
     try {
       emu.toggleVirtualGamepad?.(show)
     } catch {
@@ -103,12 +109,22 @@ export function watchVirtualGamepad(emu: VirtualPadEmulatorLike, onChange?: (sho
     }
     onChange?.(show)
   }
+  const onPointer = (e: Event) => {
+    const ev = e as PointerEvent
+    if (touched || ev.pointerType !== 'touch') return
+    const target = ev.target as Element | null
+    if (target?.closest?.(NOT_THE_GAME)) return
+    touched = true
+    sync()
+  }
   sync()
   win.addEventListener('gamepadconnected', sync)
   win.addEventListener('gamepaddisconnected', sync)
+  win.addEventListener('pointerdown', onPointer, true)
   return () => {
     win.removeEventListener('gamepadconnected', sync)
     win.removeEventListener('gamepaddisconnected', sync)
+    win.removeEventListener('pointerdown', onPointer, true)
   }
 }
 
@@ -152,27 +168,54 @@ export async function toggleFullscreen(el: HTMLElement | null, doc: Document = d
   }
 }
 
+interface AudioCtxLike {
+  state?: string
+  resume?: () => Promise<void>
+}
+
 interface AudioEmulatorLike {
-  Module?: { AL?: { currentCtx?: { audioCtx?: { state?: string; resume?: () => Promise<void> } } | null } }
+  Module?: { AL?: { currentCtx?: { audioCtx?: AudioCtxLike } | null; contexts?: Record<string, { audioCtx?: AudioCtxLike } | null> | Array<{ audioCtx?: AudioCtxLike } | null> } }
 }
 
-function audioCtx(emu: unknown) {
-  return (emu as AudioEmulatorLike | undefined)?.Module?.AL?.currentCtx?.audioCtx
+/** Every Web Audio context the core opened (normally one). */
+function audioContexts(emu: unknown): AudioCtxLike[] {
+  const al = (emu as AudioEmulatorLike | undefined)?.Module?.AL
+  if (!al) return []
+  const out = new Set<AudioCtxLike>()
+  if (al.currentCtx?.audioCtx) out.add(al.currentCtx.audioCtx)
+  for (const c of Object.values(al.contexts ?? {})) if (c?.audioCtx) out.add(c.audioCtx)
+  return [...out]
 }
 
-/** True when the game's sound is held back until the player touches the screen. */
+/**
+ * True when the game's sound is held back: 'suspended' until a touch (Safari autoplay rule), or
+ * WebKit's own 'interrupted' (another app or a call took the audio).
+ */
 export function audioSuspended(emu: unknown): boolean {
-  return audioCtx(emu)?.state === 'suspended'
+  return audioContexts(emu).some((c) => c.state !== undefined && c.state !== 'running' && c.state !== 'closed')
 }
 
-/** Must run inside a touch / click handler to work on Safari. */
-export async function resumeAudio(emu: unknown): Promise<boolean> {
-  const ctx = audioCtx(emu)
-  if (!ctx?.resume) return false
+/**
+ * Game sound on iPhone / iPad plays even with the silent switch on (or silent mode set in Control
+ * Centre); by default WebKit treats page audio like a ringtone and mutes it. iOS 17+ only.
+ */
+export function preferPlaybackAudio(nav: Navigator = navigator): void {
   try {
-    await ctx.resume()
+    const session = (nav as Navigator & { audioSession?: { type?: string } }).audioSession
+    if (session && session.type !== 'playback') session.type = 'playback'
   } catch {
-    return false
+    // Older WebKit: nothing to do.
   }
-  return ctx.state !== 'suspended'
+}
+
+/**
+ * Must run inside a touchend / click / keydown handler: WebKit does not count touchstart or
+ * pointerdown (or a gamepad press) as permission to play sound.
+ */
+export async function resumeAudio(emu: unknown): Promise<boolean> {
+  preferPlaybackAudio()
+  const ctxs = audioContexts(emu)
+  if (!ctxs.length) return false
+  await Promise.all(ctxs.map((c) => c.resume?.().catch(() => undefined)))
+  return !audioSuspended(emu)
 }

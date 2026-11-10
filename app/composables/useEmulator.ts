@@ -205,6 +205,12 @@ export function useEmulator() {
         } catch {
           // Never let the controller layout stop the game.
         }
+        // EmulatorJS opens its menu bar for a few seconds at start; a game should start clean.
+        try {
+          ;(running as { menu?: { close?: () => void } }).menu?.close?.()
+        } catch {
+          // no bar
+        }
         // The page is left with a full navigation, so the watcher never needs stopping.
         watchVirtualGamepad(running as VirtualPadEmulatorLike, (shown) => (virtualPad.value = shown))
       }

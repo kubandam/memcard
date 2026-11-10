@@ -33,13 +33,30 @@ describe('virtual gamepad choice', () => {
     expect(controllerConnected({ getGamepads: () => [{ connected: false }] })).toBe(false)
   })
 
-  it('re-decides when a controller connects or disconnects, and stops cleanly', () => {
-    const pads: Array<{ connected: boolean } | null> = [null]
+  function touchWindow(pads: Array<{ connected: boolean } | null>) {
     const win = new EventTarget() as unknown as Window
     Object.assign(win, { navigator: { maxTouchPoints: 5, getGamepads: () => pads }, matchMedia: () => ({ matches: true }) })
+    return win
+  }
+  function touch(win: Window, target: Element = document.createElement('canvas')) {
+    const e = new Event('pointerdown')
+    Object.defineProperties(e, { pointerType: { value: 'touch' }, target: { value: target } })
+    win.dispatchEvent(e)
+  }
+
+  it('starts with no pad: a game starts clean even before the controller is seen', () => {
+    const toggle = vi.fn()
+    watchVirtualGamepad({ toggleVirtualGamepad: toggle }, undefined, touchWindow([null]))
+    expect(toggle).toHaveBeenLastCalledWith(false)
+  })
+
+  it('brings the pad up when the game is touched without a controller, and drops it once one connects', () => {
+    const pads: Array<{ connected: boolean } | null> = [null]
+    const win = touchWindow(pads)
     const toggle = vi.fn()
     const seen: boolean[] = []
     const stop = watchVirtualGamepad({ toggleVirtualGamepad: toggle }, (s) => seen.push(s), win)
+    touch(win)
     expect(toggle).toHaveBeenLastCalledWith(true)
     pads[0] = pad
     win.dispatchEvent(new Event('gamepadconnected'))
@@ -49,8 +66,20 @@ describe('virtual gamepad choice', () => {
     expect(toggle).toHaveBeenLastCalledWith(true)
     stop()
     win.dispatchEvent(new Event('gamepadconnected'))
-    expect(toggle).toHaveBeenCalledTimes(3)
-    expect(seen).toEqual([true, false, true])
+    expect(seen).toEqual([false, true, false, true])
+  })
+
+  it('ignores taps on the page buttons and mouse clicks', () => {
+    const win = touchWindow([null])
+    const toggle = vi.fn()
+    watchVirtualGamepad({ toggleVirtualGamepad: toggle }, undefined, win)
+    const btn = document.createElement('button')
+    touch(win, btn)
+    const mouse = new Event('pointerdown')
+    Object.defineProperties(mouse, { pointerType: { value: 'mouse' }, target: { value: document.createElement('canvas') } })
+    win.dispatchEvent(mouse)
+    expect(toggle).toHaveBeenCalledTimes(1)
+    expect(toggle).toHaveBeenLastCalledWith(false)
   })
 
   it('never lets a broken emulator pad stop the game', () => {
@@ -103,6 +132,19 @@ describe('fullscreen', () => {
 })
 
 describe('audio', () => {
+  it('treats the WebKit interrupted state as blocked too', () => {
+    expect(audioSuspended({ Module: { AL: { currentCtx: { audioCtx: { state: 'interrupted' } } } } })).toBe(true)
+    expect(audioSuspended({ Module: { AL: { currentCtx: { audioCtx: { state: 'running' } } } } })).toBe(false)
+  })
+
+  it('asks iOS to play game sound even in silent mode', async () => {
+    const session = { type: 'auto' }
+    Object.defineProperty(navigator, 'audioSession', { configurable: true, value: session })
+    await resumeAudio({ Module: { AL: { currentCtx: { audioCtx: { state: 'running', resume: async () => {} } } } } })
+    expect(session.type).toBe('playback')
+    Reflect.deleteProperty(navigator, 'audioSession')
+  })
+
   it('detects a suspended context and resumes it', async () => {
     const ctx = { state: 'suspended', resume: vi.fn(async () => { ctx.state = 'running' }) }
     const emu = { Module: { AL: { currentCtx: { audioCtx: ctx } } } }

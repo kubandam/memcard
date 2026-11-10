@@ -18,7 +18,7 @@ import { describeTransfer, type Transfer } from '~/utils/transfer'
 import { createAutoSave } from '~/utils/autoSave'
 import { PICTURE_SETTING, shaderFor } from '~/utils/display'
 import { RIGHT_STICK_MODES, setRightStickMode, type RightStickMode } from '~/utils/gamepadFix'
-import { audioSuspended, canFullscreen, resumeAudio, toggleFullscreen } from '~/utils/touchPlay'
+import { audioSuspended, canFullscreen, preferPlaybackAudio, resumeAudio, toggleFullscreen } from '~/utils/touchPlay'
 
 definePageMeta({ layout: 'boot' })
 
@@ -308,7 +308,8 @@ async function loadSession(game: ClassifiedGame) {
 
 onMounted(async () => {
   fullscreenAvailable.value = canFullscreen()
-  window.addEventListener('pointerdown', unblockSound, { capture: true })
+  preferPlaybackAudio()
+  for (const ev of SOUND_GESTURES) window.addEventListener(ev, unblockSound, { capture: true })
   void loadRightStick()
   window.addEventListener('pagehide', flushSaves)
   document.addEventListener('visibilitychange', onVisibility)
@@ -341,8 +342,8 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
-  window.removeEventListener('pointerdown', unblockSound, { capture: true })
-  soundChecks.forEach(clearTimeout)
+  for (const ev of SOUND_GESTURES) window.removeEventListener(ev, unblockSound, { capture: true })
+  clearInterval(soundTimer)
   window.removeEventListener('pagehide', flushSaves)
   document.removeEventListener('visibilitychange', onVisibility)
   autoSave?.stop()
@@ -390,7 +391,9 @@ const fullscreenAvailable = ref(false)
 
 /** Safari keeps the game silent until the screen is touched (a controller press does not count). */
 const soundBlocked = ref(false)
-let soundChecks: ReturnType<typeof setTimeout>[] = []
+let soundTimer: ReturnType<typeof setInterval> | undefined
+/** Events WebKit accepts as permission to start sound (touchstart / pointerdown are not). */
+const SOUND_GESTURES = ['touchend', 'click', 'keydown'] as const
 
 function ejs(): unknown {
   return (window as unknown as { EJS_emulator?: unknown }).EJS_emulator
@@ -400,16 +403,29 @@ function checkSound() {
   soundBlocked.value = audioSuspended(ejs())
 }
 
-async function unblockSound() {
+function unblockSound() {
   if (!soundBlocked.value) return
-  if (await resumeAudio(ejs())) soundBlocked.value = false
+  // Called synchronously inside the gesture; awaiting first would lose the permission on WebKit.
+  void resumeAudio(ejs()).then((ok) => {
+    if (ok) soundBlocked.value = false
+  })
 }
 
 watch(phase, (p) => {
   if (p !== 'running') return
-  // The core opens its audio a moment after the first frame.
-  soundChecks = [500, 1500, 4000].map((ms) => setTimeout(checkSound, ms))
+  // The core opens its audio a moment after the first frame, and iOS may interrupt it later.
+  clearInterval(soundTimer)
+  soundTimer = setInterval(checkSound, 1000)
 })
+
+/** EmulatorJS's own bar (save / load state, settings…), only when asked for. */
+function emulatorMenu() {
+  try {
+    ;(ejs() as { menu?: { toggle?: () => void } } | undefined)?.menu?.toggle?.()
+  } catch {
+    // no bar, nothing to show
+  }
+}
 
 /** Picture size follows the stage; EmulatorJS only re-measures on window resize. */
 watch(virtualPad, () => nextTick(() => window.dispatchEvent(new Event('resize'))))
@@ -444,6 +460,7 @@ watch(virtualPad, () => nextTick(() => window.dispatchEvent(new Event('resize'))
         :can-fullscreen="fullscreenAvailable"
         :sound-blocked="soundBlocked"
         @sound="unblockSound"
+        @menu="emulatorMenu"
         @fullscreen="fullscreen"
         @controls="openControls"
         @leave="leave"
@@ -473,6 +490,11 @@ watch(virtualPad, () => nextTick(() => window.dispatchEvent(new Event('resize'))
 .game {
   position: absolute;
   inset: 0;
+}
+
+/* EmulatorJS's floating menu button on touch screens; the overlay's Menu button replaces it. */
+.game :deep(.ejs_virtualGamepad_open) {
+  display: none !important;
 }
 
 /*

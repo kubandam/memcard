@@ -30,10 +30,21 @@ test.describe('tablet held sideways', () => {
   const { defaultBrowserType: _a, ...tablet } = devices['Galaxy Tab S4 landscape']
   test.use(tablet)
 
-  test('on-screen PlayStation pad without a controller, gone once one connects', async ({ page }) => {
+  test('the game starts clean: no emulator bar, no buttons, no touch pad', async ({ page }) => {
+    await playFixture(page)
+    await page.waitForTimeout(1000)
+    await expect(page.locator('.ejs_menu_bar')).toHaveClass(/ejs_menu_bar_hidden/)
+    await expect(page.locator('[data-player-overlay]')).toHaveClass(/overlay--hidden/)
+    await expect(page.locator('.ejs_virtualGamepad_open')).toBeHidden()
+    await expect(page.locator('.ejs_virtualGamepad_parent').getByText('✕', { exact: true })).toBeHidden()
+  })
+
+  test('touching the game without a controller brings up the PlayStation pad; a controller removes it', async ({ page }) => {
     await playFixture(page)
     // The pad's container has no size of its own; its buttons are what shows.
     const pad = page.locator('.ejs_virtualGamepad_parent')
+    const vp = page.viewportSize()!
+    await page.touchscreen.tap(vp.width / 2, vp.height / 2)
     for (const symbol of ['✕', '○', '□', '△', 'L1', 'R2']) await expect(pad.getByText(symbol, { exact: true })).toBeVisible()
     await expect(pad.getByText('Fast', { exact: true })).toHaveCount(0)
 
