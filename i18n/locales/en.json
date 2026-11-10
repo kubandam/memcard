@@ -117,8 +117,27 @@
     "key": "Key",
     "close": "Close",
     "remapHint": "Remap keys in the emulator menu → Control Settings.",
-    "gamepadHint": "Gamepads work automatically; press any button on the controller.",
-    "saveHint": "Memory card: use the emulator menu → Export save to download a .srm file, and Import save to load one."
+    "saveHint": "Memory card: use the emulator menu → Export save to download a .srm file, and Import save to load one.",
+    "controller": "Controller",
+    "keyboard": "Keyboard",
+    "padConnected": "{name} connected",
+    "padNone": "No controller yet — connect one and press any button",
+    "where": {
+      "bottom": "bottom button",
+      "right": "right button",
+      "left": "left button",
+      "top": "top button"
+    },
+    "same": "same as on your controller",
+    "leftStick": "Left stick",
+    "leftStickDoes": "D-pad (works in every game)",
+    "rightStick": "Right stick ← →  for this game",
+    "rightStickMode": {
+      "l2r2": "L2 / R2",
+      "l1r1": "L1 / R1",
+      "off": "Off"
+    },
+    "rightStickHint": "PS1 games turn the camera with shoulder buttons; pick the pair this game uses."
   },
   "settings": {
     "title": "Settings",

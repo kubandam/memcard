@@ -117,7 +117,7 @@ async function onClear() {
     </button>
 
     <SectionLabel>{{ t('settings.controls') }}</SectionLabel>
-    <p class="settings__text">{{ t('controls.remapHint') }} {{ t('controls.gamepadHint') }}</p>
+    <p class="settings__text">{{ t('controls.remapHint') }}</p>
     <table class="settings__table">
       <thead>
         <tr>

@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { repairGamepads, usePlayStationLayout, type GamepadEmulatorLike, type GamepadHandlerLike } from '../../app/utils/gamepadFix'
+import { repairGamepads, setRightStickMode, usePlayStationLayout, type GamepadEmulatorLike, type GamepadHandlerLike } from '../../app/utils/gamepadFix'
 
 /** The real EmulatorJS 4.2.3 GamepadHandler, loaded as a browser script would be. */
 const source = readFileSync(join(process.cwd(), 'tests/fixtures/ejs/gamepad.js'), 'utf8')
@@ -176,6 +176,53 @@ describe('right stick turns the camera', () => {
     vi.advanceTimersByTime(20)
     expect(sent).toEqual([[0, 12, 1], [0, 12, 0], [0, 13, 1]])
     emu.gamepad.terminate()
+  })
+})
+
+describe('right stick mode', () => {
+  afterEach(() => setRightStickMode('l2r2'))
+  function run(mode: 'l1r1' | 'off', switchToOffWhileHeld = false) {
+    const { emu } = fakeEmulator(Handler)
+    const sent: Array<[number, number, number]> = []
+    Object.assign(emu, { started: true, settingsMenu: { style: { display: 'none' } }, isPopupOpen: () => false, gameManager: { simulateInput: (p: number, i: number, v: number) => sent.push([p, i, v]) } })
+    setRightStickMode(mode)
+    repairGamepads(emu)
+    const at = (rx: number) => { const g = pad(0) as unknown as { axes: number[] }; g.axes = [0, 0, rx, 0]; return g as unknown as Gamepad }
+    pads = [at(0)]
+    vi.advanceTimersByTime(20)
+    pads = [at(1)]
+    vi.advanceTimersByTime(20)
+    if (switchToOffWhileHeld) setRightStickMode('off')
+    pads = [at(0)]
+    vi.advanceTimersByTime(20)
+    emu.gamepad.terminate()
+    return sent
+  }
+
+  it('L1/R1 mode presses R1 for right', () => {
+    expect(run('l1r1')).toEqual([[0, 11, 1], [0, 11, 0]])
+  })
+
+  it('Off sends nothing', () => {
+    expect(run('off')).toEqual([])
+  })
+
+  it('switching to Off while held still releases the button', () => {
+    setRightStickMode('l2r2')
+    const sent = (() => {
+      const { emu } = fakeEmulator(Handler)
+      const out: Array<[number, number, number]> = []
+      Object.assign(emu, { started: true, settingsMenu: { style: { display: 'none' } }, isPopupOpen: () => false, gameManager: { simulateInput: (p: number, i: number, v: number) => out.push([p, i, v]) } })
+      repairGamepads(emu)
+      const at = (rx: number) => { const g = pad(0) as unknown as { axes: number[] }; g.axes = [0, 0, rx, 0]; return g as unknown as Gamepad }
+      pads = [at(0)]; vi.advanceTimersByTime(20)
+      pads = [at(1)]; vi.advanceTimersByTime(20)
+      setRightStickMode('off')
+      pads = [at(0)]; vi.advanceTimersByTime(20)
+      emu.gamepad.terminate()
+      return out
+    })()
+    expect(sent).toEqual([[0, 13, 1], [0, 13, 0]])
   })
 })
 

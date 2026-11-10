@@ -87,12 +87,29 @@ export function usePlayStationLayout(emu: GamepadEmulatorLike): boolean {
   return changed
 }
 
-/** RetroPad buttons a stick direction presses: [negative, positive]. */
-const STICK_BUTTONS: Readonly<Record<string, readonly [number, number]>> = {
-  LEFT_STICK_X: [6, 7], // D-pad left / right
-  LEFT_STICK_Y: [4, 5], // D-pad up / down
-  RIGHT_STICK_X: [12, 13], // L2 / R2: turns the camera in most 3D PS1 games
+/** What the right stick's left/right does (chosen per game in Controls). */
+export type RightStickMode = 'l2r2' | 'l1r1' | 'off'
+export const RIGHT_STICK_MODES: readonly RightStickMode[] = ['l2r2', 'l1r1', 'off']
+let rightStickMode: RightStickMode = 'l2r2'
+export function setRightStickMode(mode: RightStickMode): void {
+  rightStickMode = RIGHT_STICK_MODES.includes(mode) ? mode : 'l2r2'
 }
+export function getRightStickMode(): RightStickMode {
+  return rightStickMode
+}
+
+/** RetroPad buttons a stick direction presses: [negative, positive], or null for none. */
+function stickButtons(axis: string): readonly [number, number] | null {
+  if (axis === 'LEFT_STICK_X') return [6, 7] // D-pad left / right
+  if (axis === 'LEFT_STICK_Y') return [4, 5] // D-pad up / down
+  if (axis === 'RIGHT_STICK_X') {
+    // L2 / R2 (or L1 / R1) turn the camera in most 3D PS1 games
+    if (rightStickMode === 'l2r2') return [12, 13]
+    if (rightStickMode === 'l1r1') return [10, 11]
+  }
+  return null
+}
+
 /** Stick travel that presses a direction, and the lower point that releases it (no flicker). */
 const PRESS_AT = 0.5
 const RELEASE_AT = 0.3
@@ -104,14 +121,26 @@ const RELEASE_AT = 0.3
  */
 export function createStickToDpad(emu: GamepadEmulatorLike) {
   const held = new Map<string, -1 | 0 | 1>()
+  /** RetroPad button each stick axis currently holds down (to release it exactly, even after a mode change). */
+  const pressedBy = new Map<string, number>()
   return (e: GamepadEventLike, player: number) => {
     const axis = e.axis
-    const buttons = typeof axis === 'string' ? STICK_BUTTONS[axis] : undefined
-    if (!buttons) return
+    if (typeof axis !== 'string') return
+    const key = `${player}:${axis}`
+    const buttons = stickButtons(axis)
+    if (!buttons) {
+      // Mode switched to Off while a direction was held: let go of whatever it pressed.
+      const last = pressedBy.get(key)
+      if (last !== undefined) {
+        emu.gameManager?.simulateInput(player, last, 0)
+        pressedBy.delete(key)
+        held.set(key, 0)
+      }
+      return
+    }
     if (!emu.started || !emu.gameManager) return
     if ((emu.settingsMenu && emu.settingsMenu.style.display !== 'none') || emu.isPopupOpen?.()) return
     const value = typeof e.value === 'number' ? e.value : 0
-    const key = `${player}:${axis}`
     const before = held.get(key) ?? 0
     let now: -1 | 0 | 1 = before
     if (value >= PRESS_AT) now = 1
@@ -120,11 +149,14 @@ export function createStickToDpad(emu: GamepadEmulatorLike) {
     if (now === before) return
     held.set(key, now)
     const [neg, pos] = buttons
-    const press = (index: number, on: boolean) => emu.gameManager!.simulateInput(player, index, on ? 1 : 0)
-    if (before === -1) press(neg, false)
-    if (before === 1) press(pos, false)
-    if (now === -1) press(neg, true)
-    if (now === 1) press(pos, true)
+    const last = pressedBy.get(key)
+    if (last !== undefined) emu.gameManager!.simulateInput(player, last, 0)
+    pressedBy.delete(key)
+    if (now !== 0) {
+      const index = now === -1 ? neg : pos
+      emu.gameManager!.simulateInput(player, index, 1)
+      pressedBy.set(key, index)
+    }
   }
 }
 

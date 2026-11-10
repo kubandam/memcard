@@ -1,3 +1,6 @@
+/** Only ranges up to this size are buffered for the edge cache (the app asks for 4 MiB); larger ones stream. */
+const EDGE_CACHE_MAX_BYTES = 8 * 1024 * 1024
+
 export default defineEventHandler((event) =>
   readerAction(event, 'object', async ({ id, key, svc }) => {
     const m = /^bytes=(\d+)-(\d+)$/.exec(getHeader(event, 'range') ?? '')
@@ -23,7 +26,7 @@ export default defineEventHandler((event) =>
     if (!res.contentRange) return res.body
     setResponseStatus(event, 206)
     setHeader(event, 'content-range', res.contentRange)
-    if (!range) return res.body
+    if (!range || res.length > EDGE_CACHE_MAX_BYTES) return res.body
     const bytes = res.body instanceof Uint8Array ? res.body : new Uint8Array(await new Response(res.body).arrayBuffer())
     edgePut(event, id, key!, range.start, range.end, { bytes, contentRange: res.contentRange, size: res.size })
     return bytes

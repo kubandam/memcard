@@ -16,6 +16,7 @@ import type { SyncMeta } from '~~/shared/utils/saveSync'
 import { setSetting } from '~/utils/localDb'
 import { describeTransfer, type Transfer } from '~/utils/transfer'
 import { createAutoSave } from '~/utils/autoSave'
+import { RIGHT_STICK_MODES, setRightStickMode, type RightStickMode } from '~/utils/gamepadFix'
 
 definePageMeta({ layout: 'boot' })
 
@@ -34,6 +35,25 @@ const controlsOpen = ref(false)
 const mapping = ref<KeyBinding[]>([])
 const saveSync = shallowRef<ReturnType<typeof createSaveSync> | null>(null)
 const saveNotice = ref<string | null>(null)
+/** Per game: what the right stick's left/right presses (Controls → Controller). */
+const rightStick = ref<RightStickMode>('l2r2')
+const rightStickSetting = computed(() => `rightStick.${source.value}:${id.value}`)
+
+async function loadRightStick() {
+  try {
+    const saved = await getSetting<RightStickMode>(rightStickSetting.value)
+    if (saved && RIGHT_STICK_MODES.includes(saved)) rightStick.value = saved
+  } catch {
+    // default
+  }
+  setRightStickMode(rightStick.value)
+}
+
+function onRightStick(mode: RightStickMode) {
+  rightStick.value = mode
+  setRightStickMode(mode)
+  void setSetting(rightStickSetting.value, mode).catch(() => undefined)
+}
 /** Cloud games only: the state slot is refreshed every few minutes, when the tab hides and on exit. */
 let autoSave: ReturnType<typeof createAutoSave> | null = null
 /** Longest the exit waits for the final auto-save before navigating anyway. */
@@ -284,6 +304,7 @@ async function loadSession(game: ClassifiedGame) {
 }
 
 onMounted(async () => {
+  void loadRightStick()
   window.addEventListener('pagehide', flushSaves)
   document.addEventListener('visibilitychange', onVisibility)
   try {
@@ -388,7 +409,7 @@ function fullscreen() {
         @controls="openControls"
         @leave="leave"
       />
-      <ControlsOverlay :open="controlsOpen" :mapping="mapping" @close="controlsOpen = false" />
+      <ControlsOverlay :open="controlsOpen" :mapping="mapping" :right-stick="rightStick" @update:right-stick="onRightStick" @close="controlsOpen = false" />
     </template>
   </div>
 </template>
