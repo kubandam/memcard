@@ -26,11 +26,17 @@ export interface CloudApi {
   createShare(input: { shareId: string; gameId: string | null; allowedKeys: string[]; wrapped: Uint8Array }): Promise<void>
   listShares(): Promise<IssuedShareRow[]>
   revokeShare(shareId: string): Promise<void>
+  /** Encrypted per-game blob (memory card, save state, screenshot), or null when absent. */
+  getBlob(kind: BlobKind, key: string): Promise<Uint8Array | null>
+  putBlob(kind: BlobKind, key: string, bytes: Uint8Array): Promise<void>
+  deleteBlob(kind: BlobKind, key: string): Promise<void>
   /** Encrypted memory card, or null when this game has none in the cloud yet. */
   getSave(saveKey: string): Promise<Uint8Array | null>
   putSave(saveKey: string, bytes: Uint8Array): Promise<void>
   deleteSave(saveKey: string): Promise<void>
 }
+
+export type BlobKind = 'save' | 'state' | 'shot'
 
 export interface IssuedShareRow {
   id: string
@@ -141,17 +147,26 @@ export function createCloudApi(opts: { libraryId: string; kAuth: Uint8Array; bas
     async revokeShare(shareId) {
       await check(await fetch(`${lib}/shares/${shareId}`, { method: 'DELETE', headers: auth }))
     },
-    async getSave(saveKey) {
-      const res = await fetch(`${lib}/saves/${saveKey}`, { headers: auth, cache: 'no-store' })
+    async getBlob(kind, key) {
+      const res = await fetch(`${lib}/blobs/${kind}/${key}`, { headers: auth, cache: 'no-store' })
       if (res.status === 404) return null
       return new Uint8Array(await (await check(res)).arrayBuffer())
     },
-    async putSave(saveKey, bytes) {
-      await check(await fetch(`${lib}/saves/${saveKey}`, { method: 'PUT', headers: { ...auth, 'content-type': 'application/octet-stream' }, body: bytes as BodyInit }))
+    async putBlob(kind, key, bytes) {
+      await check(await fetch(`${lib}/blobs/${kind}/${key}`, { method: 'PUT', headers: { ...auth, 'content-type': 'application/octet-stream' }, body: bytes as BodyInit }))
     },
-    async deleteSave(saveKey) {
-      const res = await fetch(`${lib}/saves/${saveKey}`, { method: 'DELETE', headers: auth })
+    async deleteBlob(kind, key) {
+      const res = await fetch(`${lib}/blobs/${kind}/${key}`, { method: 'DELETE', headers: auth })
       if (res.status !== 404) await check(res)
+    },
+    getSave(saveKey) {
+      return this.getBlob('save', saveKey)
+    },
+    putSave(saveKey, bytes) {
+      return this.putBlob('save', saveKey, bytes)
+    },
+    deleteSave(saveKey) {
+      return this.deleteBlob('save', saveKey)
     },
   }
 }

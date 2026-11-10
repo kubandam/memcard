@@ -1,6 +1,6 @@
 import { createError, type H3Event } from 'h3'
 import { LIBRARY_ID_RE, SOFT_LIMIT, hardLimit, notFound, requireObjectKey, requireOwner } from './libraryAuth'
-import { createLibraryService, ServiceError, type LibraryService } from './libraryService'
+import { BLOB_KINDS, createLibraryService, ServiceError, type BlobKind, type LibraryService } from './libraryService'
 
 /** Authenticates the owner of `:id`, then runs `fn` with the service; maps ServiceError to HTTP. */
 export async function ownerAction<T>(event: H3Event, fn: (ctx: { id: string; key: string | null; svc: LibraryService }) => Promise<T>): Promise<T> {
@@ -56,7 +56,14 @@ export function routeUploadId(event: H3Event): string {
   return decodeURIComponent(getRouterParam(event, 'uploadId')!)
 }
 
-/** `:saveKey` route param, same shape as object keys; anything else is a 404. */
+/** `:key` blob route param, same shape as object keys; anything else is a 404. */
 export function saveKeyParam(event: H3Event): string {
-  return requireObjectKey(getRouterParam(event, 'saveKey') ?? '')
+  return requireObjectKey(getRouterParam(event, 'key') ?? '')
+}
+
+/** `:kind` blob route param: save | state | shot; anything else is a 404. */
+export function blobKindParam(event: H3Event): BlobKind {
+  const kind = getRouterParam(event, 'kind') as BlobKind
+  if (!BLOB_KINDS.includes(kind)) notFound()
+  return kind
 }

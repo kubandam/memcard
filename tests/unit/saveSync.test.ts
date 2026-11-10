@@ -32,6 +32,13 @@ describe('save crypto', () => {
     await expect(openSave(g.key, other.saveKey, sealed)).rejects.toThrow()
   })
 
+  it('fingerprint handles megabytes quickly', () => {
+    const big = new Uint8Array(16 * 1024 * 1024).fill(3)
+    const t = performance.now()
+    expect(fingerprint(big)).toMatch(/^[0-9a-f]{16}$/)
+    expect(performance.now() - t).toBeLessThan(1500)
+  })
+
   it('fingerprint is a 16-char hex and differs for different cards', () => {
     expect(fingerprint(card(1))).toMatch(/^[0-9a-f]{16}$/)
     expect(fingerprint(card(1))).not.toBe(fingerprint(card(2)))

@@ -160,6 +160,24 @@ describe('multipart objects', () => {
   })
 })
 
+describe('blob kinds (save / state / shot)', () => {
+  const SK = 'abcdefghjkmnpqrstvwxyz8'
+  it('stores kinds side by side with per-kind size limits', async () => {
+    const { svc, store, r2 } = await setup(100 * MiB)
+    await svc.putBlob('liba', 'state', SK, new Uint8Array(5 * MiB))
+    await svc.putBlob('liba', 'shot', SK, new Uint8Array(10))
+    await svc.putBlob('liba', 'save', SK, new Uint8Array(20))
+    expect((await svc.getBlob('liba', 'state', SK)).length).toBe(5 * MiB)
+    expect(r2.objects.has(`lib/liba/state/${SK}`)).toBe(true)
+    expect(r2.objects.has(`lib/liba/save/${SK}`)).toBe(true)
+    expect((await store.getLibrary('liba'))!.bytesUsed).toBe(5 * MiB + 30)
+    expect(await code(svc.putBlob('liba', 'save', SK, new Uint8Array(MiB + 1)))).toBe(400)
+    expect(await code(svc.putBlob('liba', 'state', SK, new Uint8Array(33 * MiB)))).toBe(400)
+    await svc.deleteBlob('liba', 'state', SK)
+    expect(await code(svc.getBlob('liba', 'state', SK))).toBe(404)
+  })
+})
+
 describe('saves', () => {
   const SK = 'abcdefghjkmnpqrstvwxyz9'
   it('put/get/overwrite counts the size once; delete frees it; missing is 404', async () => {

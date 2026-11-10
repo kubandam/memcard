@@ -23,11 +23,16 @@ export const MPU_TTL_MS = 7 * 24 * 3600 * 1000
 
 const manifestPath = (libraryId: string, version: string) => `lib/${libraryId}/manifest/${version}`
 export const objectPath = (libraryId: string, key: string) => `lib/${libraryId}/obj/${key}`
-const savePath = (libraryId: string, saveKey: string) => `lib/${libraryId}/save/${saveKey}`
+/** Per-game encrypted blobs: memory card, latest save state, and its screenshot. */
+export type BlobKind = 'save' | 'state' | 'shot'
+export const BLOB_KINDS: readonly BlobKind[] = ['save', 'state', 'shot']
+/** Largest accepted encrypted blob per kind. */
+export const MAX_BLOB_BYTES: Readonly<Record<BlobKind, number>> = { save: 1024 * 1024, state: 32 * 1024 * 1024, shot: 1024 * 1024 }
 /** Largest encrypted memory card accepted (PS1 cards are 128 KiB). */
-export const MAX_SAVE_BYTES = 1024 * 1024
-/** Memory cards one library may hold (one per game). */
+export const MAX_SAVE_BYTES = MAX_BLOB_BYTES.save
+/** Blobs of one kind one library may hold (one per game). */
 export const MAX_SAVES = 500
+const blobPath = (libraryId: string, kind: BlobKind, key: string) => `lib/${libraryId}/${kind}/${key}`
 
 export interface LibraryService {
   getManifest(libraryId: string): Promise<{ bytes: Uint8Array; etag: string } | null>
@@ -46,6 +51,9 @@ export interface LibraryService {
   lookupShare(shareId: string): Promise<{ libraryId: string; gameId: string | null; wrapped: Uint8Array }>
   /** 404 unless the share is active, belongs to `libraryId`, and covers `what`. */
   authorizeShare(shareId: string, libraryId: string, what: { manifest: true } | { key: string }): Promise<void>
+  getBlob(libraryId: string, kind: BlobKind, key: string): Promise<Uint8Array>
+  putBlob(libraryId: string, kind: BlobKind, key: string, body: Uint8Array): Promise<void>
+  deleteBlob(libraryId: string, kind: BlobKind, key: string): Promise<void>
   getSave(libraryId: string, saveKey: string): Promise<Uint8Array>
   putSave(libraryId: string, saveKey: string, body: Uint8Array): Promise<void>
   deleteSave(libraryId: string, saveKey: string): Promise<void>
@@ -199,45 +207,55 @@ export function createLibraryService(deps: { store: LibraryStore; r2: R2Bucket; 
       return { libraryId: row.libraryId, gameId: row.gameId, wrapped: row.wrapped }
     },
 
-    async getSave(libraryId, saveKey) {
-      const obj = await r2.get(savePath(libraryId, saveKey))
+    async getBlob(libraryId, kind, key) {
+      const obj = await r2.get(blobPath(libraryId, kind, key))
       if (!obj) throw new ServiceError(404)
       return new Uint8Array(await obj.arrayBuffer())
     },
 
-    async putSave(libraryId, saveKey, body) {
-      if (body.length === 0 || body.length > MAX_SAVE_BYTES) throw new ServiceError(400)
-      const accountKey = `save:${saveKey}`
+    async putBlob(libraryId, kind, key, body) {
+      if (body.length === 0 || body.length > MAX_BLOB_BYTES[kind]) throw new ServiceError(400)
+      const accountKey = `${kind}:${key}`
       const objects = await store.listObjects(libraryId)
       const previous = objects.find((o) => o.key === accountKey)?.size ?? 0
-      if (!objects.some((o) => o.key === accountKey) && objects.filter((o) => o.key.startsWith('save:')).length >= MAX_SAVES) {
-        throw new ServiceError(429, 'too-many-saves')
+      if (!objects.some((o) => o.key === accountKey) && objects.filter((o) => o.key.startsWith(`${kind}:`)).length >= MAX_SAVES) {
+        throw new ServiceError(429, 'too-many-blobs')
       }
       const delta = body.length - previous
       const lib = await store.getLibrary(libraryId)
       if ((await store.totalBytes()) + (await store.pendingBytes(since())) + delta > hardLimit) throw new ServiceError(413, 'quota')
       if ((lib?.bytesUsed ?? 0) + (await store.pendingBytes(since(), libraryId)) + delta > libraryLimit) throw new ServiceError(413, 'quota')
-      const prevBody = previous ? await r2.get(savePath(libraryId, saveKey)) : null
+      const prevBody = previous ? await r2.get(blobPath(libraryId, kind, key)) : null
       const prevBytes = prevBody ? new Uint8Array(await prevBody.arrayBuffer()) : null
-      await r2.put(savePath(libraryId, saveKey), body)
+      await r2.put(blobPath(libraryId, kind, key), body)
       await store.addObject(libraryId, accountKey, body.length)
       // Re-check after the write: a concurrent writer may have used the space meanwhile.
       const libAfter = await store.getLibrary(libraryId)
       if ((await store.totalBytes()) > hardLimit || (libAfter?.bytesUsed ?? 0) > libraryLimit) {
         if (prevBytes) {
-          await r2.put(savePath(libraryId, saveKey), prevBytes)
+          await r2.put(blobPath(libraryId, kind, key), prevBytes)
           await store.addObject(libraryId, accountKey, prevBytes.length)
         } else {
-          await r2.delete(savePath(libraryId, saveKey))
+          await r2.delete(blobPath(libraryId, kind, key))
           await store.removeObject(libraryId, accountKey)
         }
         throw new ServiceError(413, 'quota')
       }
     },
 
-    async deleteSave(libraryId, saveKey) {
-      await r2.delete(savePath(libraryId, saveKey))
-      await store.removeObject(libraryId, `save:${saveKey}`)
+    async deleteBlob(libraryId, kind, key) {
+      await r2.delete(blobPath(libraryId, kind, key))
+      await store.removeObject(libraryId, `${kind}:${key}`)
+    },
+
+    getSave(libraryId, saveKey) {
+      return this.getBlob(libraryId, 'save', saveKey)
+    },
+    putSave(libraryId, saveKey, body) {
+      return this.putBlob(libraryId, 'save', saveKey, body)
+    },
+    deleteSave(libraryId, saveKey) {
+      return this.deleteBlob(libraryId, 'save', saveKey)
     },
 
     async authorizeShare(shareId, libraryId, what) {
