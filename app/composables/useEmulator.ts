@@ -1,3 +1,4 @@
+import { assignKnownPads, repairGamepads, type GamepadEmulatorLike } from '~/utils/gamepadFix'
 import { ref } from 'vue'
 import { buildEjsGlobals, type EjsOptions } from '~/utils/emulatorjs'
 import type { ExtraFile } from '~/utils/gamePayload'
@@ -173,10 +174,16 @@ export function useEmulator() {
           original(message)
         }
       }
+      if (instance) repairGamepads(instance as GamepadEmulatorLike)
       setPhase('starting')
     }
     w.EJS_onGameStart = () => {
       setPhase('running')
+      const running = emulator() as GamepadEmulatorLike | undefined
+      if (running) {
+        repairGamepads(running)
+        assignKnownPads(running)
+      }
       try {
         onStarted?.()
       } catch {
