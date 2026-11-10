@@ -7,6 +7,8 @@ export interface MemcardEnv {
   RL_CREATE?: { limit: (opts: { key: string }) => Promise<{ success: boolean }> }
   RL_SHARE?: { limit: (opts: { key: string }) => Promise<{ success: boolean }> }
   MEMCARD_INVITES?: string
+  /** Local development only: skip the create rate limit. Never set in production. */
+  MEMCARD_DEV_NO_RATELIMIT?: string
   TOTAL_BYTES_LIMIT?: string
 }
 

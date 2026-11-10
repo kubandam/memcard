@@ -41,10 +41,10 @@ test('create, upload, open on a second PC, play from cloud, download, wrong pass
   await a.locator('[data-recovery-done]').click()
   await a.locator('[data-open-upload]').click()
   await a.locator('[data-upload-candidate]').filter({ hasText: /controllers/i }).click()
-  await expect(a.locator('a[href^="/play/cloud/"]')).toHaveCount(1, { timeout: 60_000 })
+  await expect(a.locator('.cloud-library a[href^="/play/cloud/"]')).toHaveCount(1, { timeout: 60_000 })
 
   // Play straight from the cloud.
-  await a.locator('a[href^="/play/cloud/"]').click()
+  await a.locator('.cloud-library a[href^="/play/cloud/"]').click()
   await a.waitForFunction(() => document.documentElement.dataset.phase === 'running', null, { timeout: 90_000 })
   await pc1.close()
 
@@ -58,7 +58,7 @@ test('create, upload, open on a second PC, play from cloud, download, wrong pass
   await expect(b.getByText(/no library found/i)).toBeVisible({ timeout: 30_000 })
   await b.locator('[data-secret]').fill(passphrase)
   await b.locator('form[data-open]').evaluate((f: HTMLFormElement) => f.requestSubmit())
-  await expect(b.locator('a[href^="/play/cloud/"]')).toHaveCount(1, { timeout: 30_000 })
+  await expect(b.locator('.cloud-library a[href^="/play/cloud/"]')).toHaveCount(1, { timeout: 30_000 })
   await b.locator('.cloud-library .tile details summary').first().click()
   await b.locator('[data-download]').click()
   await expect(b.locator('a[href^="/play/local/"]')).toHaveCount(1, { timeout: 60_000 })

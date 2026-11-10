@@ -13,7 +13,7 @@ async function openHome(page: Page) {
 }
 
 async function playCloud(page: Page) {
-  await page.locator('a[href^="/play/cloud/"]').first().click()
+  await page.locator('.cloud-library a[href^="/play/cloud/"]').first().click()
   await page.waitForFunction(() => document.documentElement.dataset.phase === 'running', null, { timeout: 90_000 })
 }
 
@@ -31,7 +31,7 @@ test('a memory card saved on one PC is loaded on another', async ({ browser }) =
   await a.locator('[data-recovery-done]').click({ timeout: 30_000 })
   await a.locator('[data-open-upload]').click()
   await a.locator('[data-upload-candidate]').filter({ hasText: /controllers/i }).click()
-  await expect(a.locator('a[href^="/play/cloud/"]')).toHaveCount(1, { timeout: 60_000 })
+  await expect(a.locator('.cloud-library a[href^="/play/cloud/"]')).toHaveCount(1, { timeout: 60_000 })
   await playCloud(a)
 
   // Put a recognisable card into the emulator (its own "Import save" path) and flush it.
@@ -57,7 +57,7 @@ test('a memory card saved on one PC is loaded on another', async ({ browser }) =
   await openHome(b)
   await b.locator('[data-secret]').fill(passphrase)
   await b.locator('form[data-open]').evaluate((f: HTMLFormElement) => f.requestSubmit())
-  await expect(b.locator('a[href^="/play/cloud/"]')).toHaveCount(1, { timeout: 30_000 })
+  await expect(b.locator('.cloud-library a[href^="/play/cloud/"]')).toHaveCount(1, { timeout: 30_000 })
   await playCloud(b)
   const got = await b.evaluate(() => {
     const gm = (window as unknown as { EJS_emulator: { gameManager: { FS: { readFile(p: string): Uint8Array; analyzePath(p: string): { exists: boolean } }; getSaveFilePath(): string } } }).EJS_emulator.gameManager
