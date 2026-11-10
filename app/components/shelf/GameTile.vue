@@ -51,10 +51,24 @@ const { t } = useI18n()
   transition: transform 160ms ease, box-shadow 160ms ease;
 }
 
-.tile__cover:hover,
 .tile__cover:focus-visible {
   transform: translateY(-3px);
   box-shadow: var(--tile-shadow), 0 0 0 2px var(--tile-accent), 0 14px 36px var(--tile-accent-shadow, transparent);
+}
+
+/*
+ * Hover effects only where there is a real pointer. On iPad (Safari and Chrome alike) a tap on a
+ * link whose :hover reveals something only shows the hover, and a second tap is needed to play.
+ */
+@media (hover: hover) {
+  .tile__cover:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--tile-shadow), 0 0 0 2px var(--tile-accent), 0 14px 36px var(--tile-accent-shadow, transparent);
+  }
+
+  .tile__cover:hover .tile__play {
+    opacity: 1;
+  }
 }
 
 .tile__img {
@@ -104,9 +118,15 @@ const { t } = useI18n()
   transition: opacity 160ms ease;
 }
 
-.tile__cover:hover .tile__play,
 .tile__cover:focus-visible .tile__play {
   opacity: 1;
+}
+
+/* Touch screens: the play label is always shown, nothing waits for a hover. */
+@media (hover: none) {
+  .tile__play {
+    opacity: 1;
+  }
 }
 
 .tile__head {

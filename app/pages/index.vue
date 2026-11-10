@@ -24,12 +24,21 @@ const compactAdd = computed(() => cloud.status.value === 'open' || games.value.l
 const shared = useSharedLibraries()
 
 const hydrated = ref(false)
+/**
+ * False until a remembered library (and shared ones) had its chance to open. Until then the
+ * online library keeps its place with a placeholder and everything below it is invisible: on a
+ * slow tablet the free games would otherwise sit where the library appears a few seconds later,
+ * and a tap meant for a library game would start a free one.
+ */
+const settled = ref(false)
+/** Never keep the page hidden longer than this, even if the network hangs. */
+const SETTLE_MAX_MS = 8000
 
 onMounted(() => {
   hydrated.value = true
   refresh()
-  cloud.restore()
-  shared.restore()
+  const timeout = new Promise((r) => setTimeout(r, SETTLE_MAX_MS))
+  void Promise.race([Promise.allSettled([cloud.restore(), shared.restore()]), timeout]).finally(() => (settled.value = true))
 })
 
 function startRename(game: LocalGame) {
@@ -66,7 +75,7 @@ async function confirmDelete(id: string) {
 
 
     <ClientOnly>
-      <ContinueHero v-if="cloud.status.value === 'open'" />
+      <ContinueHero v-if="settled && cloud.status.value === 'open'" />
     </ClientOnly>
 
     <section aria-labelledby="online-library" class="online">
@@ -74,11 +83,16 @@ async function confirmDelete(id: string) {
         <h2 id="online-library" class="display library-head__title">{{ t('cloud.section') }}</h2>
       </div>
       <ClientOnly>
-        <CloudLibrary v-if="cloud.status.value === 'open'" @downloaded="refresh" />
+        <div v-if="!settled" class="online__placeholder" data-library-loading aria-busy="true"><span class="label">{{ t('cloud.opening') }}</span></div>
+        <CloudLibrary v-else-if="cloud.status.value === 'open'" @downloaded="refresh" />
         <CloudPanel v-else />
+        <template #fallback>
+          <div class="online__placeholder" aria-busy="true"><span class="label">{{ t('cloud.opening') }}</span></div>
+        </template>
       </ClientOnly>
       <ClientOnly>
-        <details v-if="cloud.status.value === 'open'" class="redeem-toggle">
+        <template v-if="!settled" />
+        <details v-else-if="cloud.status.value === 'open'" class="redeem-toggle">
           <summary class="label">{{ t('share.haveCodeFromFriend') }}</summary>
           <RedeemCode @downloaded="refresh" />
         </details>
@@ -89,6 +103,7 @@ async function confirmDelete(id: string) {
       </ClientOnly>
     </section>
 
+    <div class="below" :class="{ 'below--waiting': !settled }" :inert="!settled || undefined">
     <FreeGames v-if="freeGames.length" :games="freeGames" @downloaded="refresh" />
 
     <ClientOnly>
@@ -149,10 +164,32 @@ async function confirmDelete(id: string) {
 
       <DropZone :compact="compactAdd" @files="addFiles" />
     </section>
+    </div>
   </div>
 </template>
 
 <style scoped>
+/* Same height as the passphrase form, so the page does not jump when it is replaced. */
+.online__placeholder {
+  min-height: 320px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+}
+
+.online__placeholder .label {
+  opacity: 0;
+  animation: placeholder-in 200ms ease 400ms forwards;
+}
+
+@keyframes placeholder-in {
+  to { opacity: 1; }
+}
+
+.below--waiting {
+  visibility: hidden;
+}
+
 .empty {
   color: var(--fg-muted);
   margin: 0;
