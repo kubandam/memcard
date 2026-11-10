@@ -77,3 +77,21 @@ describe('decideOnStart', () => {
     expect(decideOnStart({ local: card(3), meta: null, cloud: c(2, 9) }).action).toBe('conflict')
   })
 })
+
+import { deriveStateKeys } from '../../shared/utils/saveSync'
+
+describe('state keys', () => {
+  it('derives distinct state and screenshot keys per game, separate from the memory-card key', async () => {
+    const k = newGameKey()
+    const s = await deriveStateKeys(k)
+    const save = await deriveSaveKeys(k)
+    expect(s.stateKey).toMatch(/^[0-9a-hjkmnp-tv-z]{23}$/)
+    expect(new Set([s.stateKey, s.shotKey, save.saveKey]).size).toBe(3)
+    const sealed = await sealSave(s.key, s.stateKey, card(4), 77)
+    expect((await openSave(s.key, s.stateKey, sealed)).updatedAt).toBe(77)
+    // A state can never be opened as a memory card (other key) or as another game's state.
+    await expect(openSave(save.key, save.saveKey, sealed)).rejects.toThrow()
+    const other = await deriveStateKeys(newGameKey())
+    await expect(openSave(other.key, other.stateKey, sealed)).rejects.toThrow()
+  })
+})

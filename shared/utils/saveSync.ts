@@ -74,3 +74,12 @@ export function decideOnStart(input: { local: Uint8Array | null; meta: SyncMeta 
   if (meta && cloud.hash === meta.hash) return { action: 'push' }
   return { action: 'conflict', inject: cloud.card, keepLocal: local }
 }
+
+/** Keys for the one synced save-state slot of a game and its screenshot. */
+export async function deriveStateKeys(kGame: Uint8Array): Promise<{ stateKey: string; shotKey: string; key: CryptoKey }> {
+  const stateKey = encodeBase32(await hkdf(kGame, 'state:latest', 14))
+  const shotKey = encodeBase32(await hkdf(kGame, 'state:shot', 14))
+  const raw = await hkdf(kGame, 'state-key', 32)
+  const key = await crypto.subtle.importKey('raw', raw as BufferSource, 'AES-GCM', false, ['encrypt', 'decrypt'])
+  return { stateKey, shotKey, key }
+}

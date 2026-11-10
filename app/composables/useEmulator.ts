@@ -50,6 +50,12 @@ export interface StartOptions extends EjsOptions {
   onFsReady?: (fs: unknown, cardPath: string) => void
   /** Receives the memory card bytes every time EmulatorJS flushes it. */
   onCardSaved?: (card: Uint8Array) => void
+  /** Takes over the menu's Save State (EmulatorJS's own storage is skipped). */
+  onStateSaved?: (s: { state: Uint8Array; screenshot: Uint8Array | null }) => void
+  /** Takes over the menu's Load State; call `loadState(bytes)` with the state to load. */
+  onStateLoadRequested?: () => void
+  /** Runs once the game is running. */
+  onStarted?: () => void
 }
 
 /** Where pcsx_rearmed keeps the memory card for a given EJS_gameName. */
@@ -112,7 +118,7 @@ export function useEmulator() {
       fail('An emulator is already running on this page. Reload to start another game.')
       return
     }
-    const { bios, extraFiles = [], onFsReady, onCardSaved, ...ejs } = opts
+    const { bios, extraFiles = [], onFsReady, onCardSaved, onStateSaved, onStateLoadRequested, onStarted, ...ejs } = opts
     // Defense in depth: only plain files directly in the FS root (never ../ or nested paths).
     if (extraFiles.some((f) => !f.path.startsWith('/') || !isSafeFileName(f.path.slice(1)))) {
       fail('This game contains a file name that is not allowed, so it was not started.')
@@ -147,6 +153,15 @@ export function useEmulator() {
           })
         }
       }
+      if (instance?.on && onStateSaved) {
+        instance.on('saveState', (e) => {
+          const ev = e as { state?: Uint8Array; screenshot?: Uint8Array | ArrayBuffer | null }
+          if (!(ev?.state instanceof Uint8Array)) return
+          const shot = ev.screenshot instanceof Uint8Array ? ev.screenshot : ev.screenshot ? new Uint8Array(ev.screenshot) : null
+          onStateSaved({ state: ev.state, screenshot: shot })
+        })
+      }
+      if (instance?.on && onStateLoadRequested) instance.on('loadState', () => onStateLoadRequested())
       // EmulatorJS 4.2.3 bug: startGame() runs setupDisksMenu() before setupSettingsMenu() creates
       // `allSettings`, so any game with more than one disc throws "Cannot set properties of undefined
       // (setting 'disk')". Pre-creating the object is harmless: setupSettingsMenu() replaces it.
@@ -160,7 +175,14 @@ export function useEmulator() {
       }
       setPhase('starting')
     }
-    w.EJS_onGameStart = () => setPhase('running')
+    w.EJS_onGameStart = () => {
+      setPhase('running')
+      try {
+        onStarted?.()
+      } catch {
+        // Never let an add-on stop the game.
+      }
+    }
     w.EJS_onSaveSave = (e: SaveSaveEvent) => {
       if (!saveHandler || !e?.save) return
       saveHandler(e.save instanceof Uint8Array ? e.save : new Uint8Array(e.save))
@@ -181,5 +203,17 @@ export function useEmulator() {
     document.body.appendChild(script)
   }
 
-  return { phase, progress, error, setPhase, setSubProgress, fail, start, onSaveExport, flushSaves }
+  /** Loads a save state into the running core. Returns false when the core is not ready. */
+  function loadState(state: Uint8Array): boolean {
+    const gm = emulator()?.gameManager as { loadState?: (s: Uint8Array) => void } | undefined
+    if (!gm?.loadState) return false
+    try {
+      gm.loadState(state)
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  return { phase, progress, error, setPhase, setSubProgress, fail, start, onSaveExport, flushSaves, loadState }
 }

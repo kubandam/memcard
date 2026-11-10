@@ -129,3 +129,31 @@ describe('useEmulator', () => {
     expect(appended.filter((s) => s.dataset?.ejsLoader !== undefined)).toHaveLength(1)
   })
 })
+
+describe('useEmulator — save states', () => {
+  beforeEach(() => {
+    vi.spyOn(document.body, 'appendChild').mockImplementation(<T extends Node>(n: T): T => n)
+    for (const k of Object.keys(window).filter((k) => k.startsWith('EJS_'))) delete (window as unknown as Record<string, unknown>)[k]
+  })
+  afterEach(() => vi.restoreAllMocks())
+
+  it('takes over Save/Load State, runs onStarted, and loadState feeds the core', () => {
+    const saved: unknown[] = []
+    let loadRequested = 0
+    let started = 0
+    const { start, loadState } = useEmulator()
+    start({ ...base, onStateSaved: (s) => void saved.push(s), onStateLoadRequested: () => void loadRequested++, onStarted: () => void started++ })
+    const emu = fakeEmulator() as ReturnType<typeof fakeEmulator> & { gameManager?: { loadState: ReturnType<typeof vi.fn> } }
+    w().EJS_emulator = emu
+    w().EJS_ready!(emu)
+    emu.fire('saveState', { state: new Uint8Array([1]), screenshot: new Uint8Array([2]), format: 'png' })
+    emu.fire('loadState')
+    w().EJS_onGameStart!()
+    expect(saved).toEqual([{ state: new Uint8Array([1]), screenshot: new Uint8Array([2]) }])
+    expect(loadRequested).toBe(1)
+    expect(started).toBe(1)
+    emu.gameManager = { saveSaveFiles: vi.fn(), FS: emu.FS, loadState: vi.fn() } as never
+    expect(loadState(new Uint8Array([9]))).toBe(true)
+    expect(emu.gameManager!.loadState).toHaveBeenCalledWith(new Uint8Array([9]))
+  })
+})
