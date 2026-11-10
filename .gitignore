@@ -47,6 +47,11 @@ games/
 *.bin
 *.iso
 *.img
-!tests/fixtures/**
+# Keep the fixture sources (psexe, licence, README) but never the built disc image.
+!tests/fixtures/
+!tests/fixtures/*.psexe
+!tests/fixtures/*.txt
+!tests/fixtures/*.md
+tests/fixtures/*.iso
 
 .dev.vars
