@@ -2,10 +2,10 @@
 import { IDBFactory, IDBKeyRange as FakeKeyRange } from 'fake-indexeddb'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { uploadObject } from '../../app/utils/cloudUpload'
-import { DecryptError, downloadObject, type ObjectCache } from '../../app/utils/cloudDownload'
-import { clearGameCache, createGameCache, gameCacheUsage } from '../../app/utils/gameCache'
+import { DecryptError, downloadObject, prefetchObject, type ObjectCache } from '../../app/utils/cloudDownload'
+import { cachedObjectBytes, clearGameCache, createGameCache, gameCacheUsage } from '../../app/utils/gameCache'
 import { __resetDbForTests, openDb } from '../../app/utils/localDb'
-import { newGameKey, newObjectKey } from '../../shared/utils/chunkCrypto'
+import { encryptedSize, newGameKey, newObjectKey } from '../../shared/utils/chunkCrypto'
 import { createFakeCloudApi } from './fakeCloudApi'
 
 const MiB = 1024 * 1024
@@ -141,5 +141,29 @@ describe('game cache', () => {
     await downloadObject(api, ref, kGame, { cache: createGameCache('lib1') })
     await clearGameCache()
     expect(await gameCacheUsage()).toBe(0)
+  })
+})
+
+describe('prefetchObject (Keep on this PC)', () => {
+  it('stores the whole encrypted object, then playing needs no network', async () => {
+    const { api, ranges, kGame, plain, ref } = await stored(18 * MiB)
+    const cache = createGameCache('lib1')
+    const seen: number[] = []
+    await prefetchObject(api, ref, cache, { onProgress: (d) => seen.push(d) })
+    expect(seen.at(-1)).toBe(18 * MiB)
+    expect(await cachedObjectBytes('lib1', ref.objectKey)).toBe(encryptedSize(18 * MiB))
+    ranges.length = 0
+    const back = await downloadObject(api, ref, kGame, { cache })
+    expect(ranges).toHaveLength(0)
+    expect(Buffer.compare(Buffer.from(back), Buffer.from(plain))).toBe(0)
+  })
+
+  it('fetches only the parts that are missing', async () => {
+    const { api, ranges, kGame, ref } = await stored(18 * MiB)
+    const cache = createGameCache('lib1')
+    await downloadObject({ getRange: async (k, s, e) => { if (s > 0) throw new Error('cut'); return api.getRange(k, s, e) } }, ref, kGame, { cache, concurrency: 1 }).catch(() => undefined)
+    ranges.length = 0
+    await prefetchObject(api, ref, cache, { concurrency: 1 })
+    expect(ranges.length).toBe(Math.ceil(18 / 4) - 1)
   })
 })

@@ -29,6 +29,15 @@ export function createGameCache(libraryId: string, opts: { limitBytes?: number; 
       }
     },
 
+    async hasPart(objectKey, part) {
+      try {
+        const db = await openDb()
+        return (await db.getKey('cacheParts', partKey(idOf(objectKey), part))) !== undefined
+      } catch {
+        return false
+      }
+    },
+
     async putPart(objectKey, part, cipher) {
       const id = idOf(objectKey)
       if (broken.has(id)) return
@@ -86,6 +95,16 @@ async function evict(limit: number, keep?: string): Promise<void> {
     if (e.id === keep) continue
     await dropEntry(e.id)
     total -= e.bytes
+  }
+}
+
+/** Encrypted bytes of one object stored on this PC (compare with its encrypted size for "complete"). */
+export async function cachedObjectBytes(libraryId: string, objectKey: string): Promise<number> {
+  try {
+    const db = await openDb()
+    return (await db.get('cacheIndex', `${libraryId}/${objectKey}`))?.bytes ?? 0
+  } catch {
+    return 0
   }
 }
 

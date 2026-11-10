@@ -230,7 +230,10 @@
     "stayOpen": "Stay open on this PC (anyone using this browser can open it)",
     "rememberedBadge": "Stays open on this PC",
     "rememberedHint": "Close library to forget it on this PC.",
-    "chdHint": "CHD would be 2–3× smaller"
+    "chdHint": "CHD would be 2–3× smaller",
+    "keep": "Keep on this PC",
+    "onThisPc": "On this PC · starts instantly",
+    "keepNoRoom": "Not enough room in this browser to keep the whole game. Clear the cache in Settings or keep a smaller game."
   },
   "share": {
     "share": "Share",

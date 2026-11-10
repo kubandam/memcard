@@ -4,14 +4,14 @@ import { fromBase64Url, toBase64Url } from '~~/shared/utils/bytes'
 import { decryptJson, encryptJson } from '~~/shared/utils/chunkCrypto'
 import { authVerifierHex, deriveLibraryKeys, deriveRootKey, formatRecoveryKey, parseSecret, type LibraryKeys } from '~~/shared/utils/libraryKeys'
 import type { LocalGame } from '~~/shared/types/game'
-import { newGameKey, newObjectKey } from '~~/shared/utils/chunkCrypto'
+import { encryptedSize, newGameKey, newObjectKey } from '~~/shared/utils/chunkCrypto'
 import { deriveShareKeys, formatShareCode, newShareSecret, wrapPayload } from '~~/shared/utils/shareCodes'
 import { deriveSaveKeys, deriveStateKeys } from '~~/shared/utils/saveSync'
 import type { SharePayload } from '~~/shared/types/share'
 import { ApiError, createCloudApi, type CloudApi } from '~/utils/cloudApi'
 import { ResumeMismatchError, UploadCancelledError, uploadObject } from '~/utils/cloudUpload'
-import { DecryptError, downloadObject } from '~/utils/cloudDownload'
-import { createGameCache } from '~/utils/gameCache'
+import { DecryptError, downloadObject, prefetchObject } from '~/utils/cloudDownload'
+import { cachedObjectBytes, createGameCache } from '~/utils/gameCache'
 import { createStateSync } from '~/utils/stateSyncClient'
 import { StorageError } from '~/utils/localDb'
 import { addGame, deleteSetting, deleteUploadState, getBlob, getGame, getSetting, getUploadStates, putUploadState, setCover, setSetting } from '~/utils/localDb'
@@ -67,6 +67,10 @@ interface CloudState {
   remembered: Ref<boolean>
   uploadProgress: Ref<UploadProgress | null>
   downloadProgress: Ref<UploadProgress | null>
+  /** "Keep on this PC" in progress (encrypted copy into the local game cache). */
+  keepProgress: Ref<UploadProgress | null>
+  /** Ids of games whose encrypted files are fully in this PC's cache. */
+  onThisPc: Ref<Set<string>>
   issuedShares: Ref<IssuedShare[]>
   keys: LibraryKeys | null
   api: CloudApi | null
@@ -92,6 +96,8 @@ function freshState(): CloudState {
     remembered: ref(false),
     uploadProgress: ref(null),
     downloadProgress: ref(null),
+    keepProgress: ref(null),
+    onThisPc: ref(new Set()),
     issuedShares: ref([]),
     keys: null,
     api: null,
@@ -616,6 +622,56 @@ export function useCloudLibrary() {
     }
   }
 
+  /** Re-reads which games are completely in this PC's encrypted cache. */
+  async function refreshOnThisPc(): Promise<void> {
+    const libraryId = s.libraryId.value
+    if (!libraryId) return void (s.onThisPc.value = new Set())
+    const ids = new Set<string>()
+    for (const game of s.games.value) {
+      let complete = true
+      for (const ref of game.files) {
+        if ((await cachedObjectBytes(libraryId, ref.objectKey)) < encryptedSize(ref.size)) {
+          complete = false
+          break
+        }
+      }
+      if (complete && game.files.length) ids.add(game.id)
+    }
+    s.onThisPc.value = ids
+  }
+
+  /** Puts a game's encrypted files into this PC's cache now, so its next start needs no download. */
+  async function keepOnThisPc(id: string): Promise<boolean> {
+    const game = s.games.value.find((g) => g.id === id)
+    const libraryId = s.libraryId.value
+    if (!game || !libraryId || s.keepProgress.value) return false
+    const { api } = requireOpen()
+    const cache = createGameCache(libraryId)
+    s.notice.value = null
+    s.keepProgress.value = { gameId: id, title: game.title, done: 0, total: game.sizeBytes }
+    try {
+      let before = 0
+      for (const ref of game.files) {
+        await prefetchObject(api, ref, cache, {
+          onProgress: (done) => (s.keepProgress.value = { gameId: id, title: game.title, done: before + done, total: game.sizeBytes }),
+        })
+        before += ref.size
+      }
+      await refreshOnThisPc()
+      if (!s.onThisPc.value.has(id)) {
+        // Every part arrived but not all could be stored: the browser is out of room.
+        s.notice.value = { kind: 'error', key: 'cloud.keepNoRoom' }
+        return false
+      }
+      return true
+    } catch (err) {
+      s.notice.value = noticeFor(err)
+      return false
+    } finally {
+      s.keepProgress.value = null
+    }
+  }
+
   const snapshots = new Map<string, { url: string; updatedAt: number } | null>()
 
   /** Screenshot of a game's synced save state (cached per page), or null. */
@@ -680,6 +736,10 @@ export function useCloudLibrary() {
     /** The open library's API for save sync (throws when closed). */
     saveApi: () => requireOpen().api,
     downloadProgress: s.downloadProgress,
+    keepProgress: s.keepProgress,
+    onThisPc: s.onThisPc,
+    keepOnThisPc,
+    refreshOnThisPc,
     issuedShares: s.issuedShares,
     shareGame,
     shareLibrary,

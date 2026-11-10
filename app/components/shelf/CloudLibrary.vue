@@ -6,7 +6,7 @@ import { listGames } from '~/utils/localDb'
 import { CHD_NUDGE_BYTES, uncompressedBytes } from '~/composables/useLocalLibrary'
 
 const { t } = useI18n()
-const { remembered, games, usage, uploadProgress, downloadProgress, notice, recoveryKey, close, uploadGame, deleteGame, renameGame, resumeUploads, coverUrl, isInCloud, downloadToLocal, shareGame, shareLibrary } = useCloudLibrary()
+const { remembered, games, usage, uploadProgress, downloadProgress, keepProgress, onThisPc, keepOnThisPc, refreshOnThisPc, notice, recoveryKey, close, uploadGame, deleteGame, renameGame, resumeUploads, coverUrl, isInCloud, downloadToLocal, shareGame, shareLibrary } = useCloudLibrary()
 const emit = defineEmits<{ downloaded: [] }>()
 
 const pickerOpen = ref(false)
@@ -72,10 +72,14 @@ async function loadCovers() {
   }
 }
 
-watch(games, loadCovers)
+watch(games, () => {
+  loadCovers()
+  void refreshOnThisPc()
+})
 
 onMounted(() => {
   loadCovers()
+  void refreshOnThisPc()
   loadLocal()
   resumeUploads()
 })
@@ -155,6 +159,10 @@ async function onDelete(id: string) {
             <span v-if="isLocal(game)" class="label">{{ t('cloud.inMyGames') }}</span>
             <button v-else type="button" data-download class="link-button label" :disabled="!!downloadProgress" @click="download(game.id)">
               {{ downloadProgress?.gameId === game.id ? `${Math.round((downloadProgress.done / Math.max(1, downloadProgress.total)) * 100)} %` : t('cloud.download') }}
+            </button>
+            <span v-if="onThisPc.has(game.id)" data-on-this-pc class="label">{{ t('cloud.onThisPc') }}</span>
+            <button v-else type="button" data-keep class="link-button label" :disabled="!!keepProgress" @click="keepOnThisPc(game.id)">
+              {{ keepProgress?.gameId === game.id ? `${Math.round((keepProgress.done / Math.max(1, keepProgress.total)) * 100)} %` : t('cloud.keep') }}
             </button>
             <button type="button" data-share class="link-button label" :disabled="sharing" @click="onShareGame(game.id)">{{ t('share.share') }}</button>
             <button type="button" class="link-button label" @click="(renaming = game.id), (renameValue = game.title)">{{ t('home.rename') }}</button>

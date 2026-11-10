@@ -22,6 +22,8 @@ const ENC_CHUNK = CHUNK_SIZE + GCM_TAG
  */
 export interface ObjectCache {
   getPart(objectKey: string, part: number): Promise<Uint8Array | undefined>
+  /** Whether a part is stored, without reading it (prefetch skips those). */
+  hasPart?(objectKey: string, part: number): Promise<boolean>
   putPart(objectKey: string, part: number, cipher: Uint8Array): Promise<void>
   dropObject(objectKey: string): Promise<void>
   /** The whole object was read; mark it used and make room under the limit. */
@@ -117,4 +119,48 @@ export async function downloadObject(
   await Promise.all(Array.from({ length: lanes }, worker))
   if (cache) await cache.finish(ref.objectKey)
   return out
+}
+
+/**
+ * Fetches the encrypted parts of an object that this PC's cache does not have yet, without
+ * decrypting them (they are verified when the game is played). Used by "Keep on this PC".
+ */
+export async function prefetchObject(
+  api: Pick<CloudApi, 'getRange'>,
+  ref: CloudFileRef,
+  cache: ObjectCache,
+  opts: { concurrency?: number; onProgress?: (done: number, total: number) => void } = {},
+): Promise<void> {
+  const parts = Math.ceil(ref.chunks / CHUNKS_PER_REQUEST)
+  let next = 0
+  let failed = false
+  let done = 0
+  async function one(part: number) {
+    const first = part * CHUNKS_PER_REQUEST
+    const last = Math.min(ref.chunks, first + CHUNKS_PER_REQUEST) - 1
+    const expected = (last - first) * ENC_CHUNK + plainSizeOfChunk(last, ref.size) + GCM_TAG
+    const plain = expected - (last - first + 1) * GCM_TAG
+    const have = cache.hasPart ? await cache.hasPart(ref.objectKey, part) : (await cache.getPart(ref.objectKey, part))?.length === expected
+    if (!have) {
+      const start = first * ENC_CHUNK
+      const cipher = await api.getRange(ref.objectKey, start, start + expected - 1)
+      if (cipher.length !== expected) throw new DecryptError(`Stored file is truncated: ${ref.name}`)
+      await cache.putPart(ref.objectKey, part, cipher)
+    }
+    done += plain
+    opts.onProgress?.(done, ref.size)
+  }
+  const worker = async () => {
+    while (!failed && next < parts) {
+      const part = next++
+      try {
+        await one(part)
+      } catch (err) {
+        failed = true
+        throw err
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(parts, opts.concurrency ?? DOWNLOAD_CONCURRENCY)) }, worker))
+  await cache.finish(ref.objectKey)
 }

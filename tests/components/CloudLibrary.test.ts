@@ -32,6 +32,10 @@ describe('CloudLibrary', () => {
       isInCloud: (g: LocalGame) => g.title === 'Crash' && g.sizeBytes === 100,
       downloadToLocal: vi.fn(async () => local('l9', 'Spyro', 200)),
       downloadProgress: ref(null),
+      keepProgress: ref(null),
+      onThisPc: ref(new Set<string>()),
+      keepOnThisPc: vi.fn(async () => true),
+      refreshOnThisPc: vi.fn(async () => {}),
       shareGame: vi.fn(async () => 'MC-AAAA-BBBB-CCCC-DDDD'),
       shareLibrary: vi.fn(async () => 'MC-LLLL-BBBB-CCCC-DDDD'),
       issuedShares: ref([]),
@@ -105,5 +109,16 @@ describe('CloudLibrary', () => {
   it('resumes interrupted uploads when shown', async () => {
     await mountSuspended(CloudLibrary)
     expect(cloud.resumeUploads).toHaveBeenCalled()
+  })
+
+  it('Keep on this PC: offered until the game is cached, then shown as on this PC', async () => {
+    const wrapper = await mountSuspended(CloudLibrary)
+    await flushPromises()
+    await wrapper.find('[data-keep]').trigger('click')
+    expect(cloud.keepOnThisPc).toHaveBeenCalledWith('c1')
+    ;(cloud.onThisPc as { value: Set<string> }).value = new Set(['c1'])
+    await flushPromises()
+    expect(wrapper.find('[data-keep]').exists()).toBe(false)
+    expect(wrapper.find('[data-on-this-pc]').text()).toMatch(/On this PC/)
   })
 })
