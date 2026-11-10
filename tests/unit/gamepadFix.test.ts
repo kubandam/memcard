@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { repairGamepads, type GamepadEmulatorLike, type GamepadHandlerLike } from '../../app/utils/gamepadFix'
+import { repairGamepads, usePlayStationLayout, type GamepadEmulatorLike, type GamepadHandlerLike } from '../../app/utils/gamepadFix'
 
 /** The real EmulatorJS 4.2.3 GamepadHandler, loaded as a browser script would be. */
 const source = readFileSync(join(process.cwd(), 'tests/fixtures/ejs/gamepad.js'), 'utf8')
@@ -156,5 +156,58 @@ describe('left stick mirrors the D-pad', () => {
     vi.advanceTimersByTime(20)
     expect(sent).toEqual([])
     emu.gamepad.terminate()
+  })
+})
+
+describe('right stick turns the camera', () => {
+  it('left/right press L2/R2', () => {
+    const { emu } = fakeEmulator(Handler)
+    const sent: Array<[number, number, number]> = []
+    Object.assign(emu, { started: true, settingsMenu: { style: { display: 'none' } }, isPopupOpen: () => false, gameManager: { simulateInput: (p: number, i: number, v: number) => sent.push([p, i, v]) } })
+    repairGamepads(emu)
+    const at = (rx: number) => { const g = pad(0) as unknown as { axes: number[] }; g.axes = [0, 0, rx, 0]; return g as unknown as Gamepad }
+    pads = [at(0)]
+    vi.advanceTimersByTime(20)
+    pads = [at(-1)]
+    vi.advanceTimersByTime(20)
+    pads = [at(0)]
+    vi.advanceTimersByTime(20)
+    pads = [at(0.7)]
+    vi.advanceTimersByTime(20)
+    expect(sent).toEqual([[0, 12, 1], [0, 12, 0], [0, 13, 1]])
+    emu.gamepad.terminate()
+  })
+})
+
+describe('usePlayStationLayout', () => {
+  const ejsDefaults = () => ({
+    0: { value: 'x', value2: 'BUTTON_2' },
+    1: { value: 's', value2: 'BUTTON_4' },
+    3: { value: 'enter', value2: 'START' },
+    8: { value: 'z', value2: 'BUTTON_1' },
+    9: { value: 'a', value2: 'BUTTON_3' },
+  })
+
+  it('maps Cross/Circle/Square/Triangle to bottom/right/left/top and keeps keyboard keys', () => {
+    const saved = vi.fn()
+    const emu: GamepadEmulatorLike = { controls: { 0: ejsDefaults(), 1: ejsDefaults() }, defaultControllers: { 0: ejsDefaults() }, saveSettings: saved }
+    expect(usePlayStationLayout(emu)).toBe(true)
+    const p1 = emu.controls![0]!
+    expect([p1[0]!.value2, p1[8]!.value2, p1[1]!.value2, p1[9]!.value2]).toEqual(['BUTTON_1', 'BUTTON_2', 'BUTTON_3', 'BUTTON_4'])
+    expect(p1[0]!.value).toBe('x')
+    expect(p1[3]!.value2).toBe('START')
+    expect(emu.controls![1]![0]!.value2).toBe('BUTTON_1')
+    expect(emu.defaultControllers![0]![0]!.value2).toBe('BUTTON_1')
+    expect(saved).toHaveBeenCalledOnce()
+  })
+
+  it('leaves a layout someone set up in the menu alone, and is idempotent', () => {
+    const custom = { ...ejsDefaults(), 0: { value: 'x', value2: 'BUTTON_3' } }
+    const emu: GamepadEmulatorLike = { controls: { 0: custom } }
+    expect(usePlayStationLayout(emu)).toBe(false)
+    expect(emu.controls![0]![0]!.value2).toBe('BUTTON_3')
+    const fixed: GamepadEmulatorLike = { controls: { 0: ejsDefaults() } }
+    usePlayStationLayout(fixed)
+    expect(usePlayStationLayout(fixed)).toBe(false)
   })
 })

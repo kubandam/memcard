@@ -1,4 +1,4 @@
-import { assignKnownPads, repairGamepads, type GamepadEmulatorLike } from '~/utils/gamepadFix'
+import { assignKnownPads, repairGamepads, usePlayStationLayout, type GamepadEmulatorLike } from '~/utils/gamepadFix'
 import { ref } from 'vue'
 import { buildEjsGlobals, type EjsOptions } from '~/utils/emulatorjs'
 import type { ExtraFile } from '~/utils/gamePayload'
@@ -183,6 +183,11 @@ export function useEmulator() {
       if (running) {
         repairGamepads(running)
         assignKnownPads(running)
+        try {
+          usePlayStationLayout(running)
+        } catch {
+          // Never let the controller layout stop the game.
+        }
       }
       try {
         onStarted?.()

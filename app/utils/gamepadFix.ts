@@ -11,7 +11,8 @@
  *
  * The repair re-points the handler's listeners through a lookup by `Gamepad.index`, never lets a
  * listener throw, restarts the polling loop, and assigns any already-known pad to a free player.
- * It also mirrors the left stick onto the D-pad (see `createStickToDpad`).
+ * It also maps the sticks onto buttons (see `createStickToDpad`) and the face buttons by position
+ * (see `usePlayStationLayout`).
  */
 
 interface PadSnapshot {
@@ -41,23 +42,72 @@ export interface GamepadEmulatorLike {
   settingsMenu?: { style: { display: string } }
   isPopupOpen?: () => boolean
   gameManager?: { simulateInput(player: number, index: number, value: number): void }
+  controls?: Record<number, Record<number, { value?: unknown; value2?: unknown } | undefined> | undefined>
+  defaultControllers?: GamepadEmulatorLike['controls']
+  checkGamepadInputs?: () => void
+  saveSettings?: () => void
 }
 
-/** RetroPad indexes of the D-pad in EmulatorJS controls. */
-const DPAD = { up: 4, down: 5, left: 6, right: 7 } as const
+/**
+ * EmulatorJS 4.2.3 binds face buttons Nintendo-style: the right button (Circle on a DualSense)
+ * sends Cross, the top one sends Square. Games then say "press ✕" while the ✕ key does Circle.
+ * PS1 RetroPad indexes → Standard Gamepad buttons by position.
+ */
+const EJS_FACE_DEFAULTS: ReadonlyArray<[number, string, string]> = [
+  [0, 'BUTTON_2', 'BUTTON_1'], // Cross    → bottom
+  [8, 'BUTTON_1', 'BUTTON_2'], // Circle   → right
+  [1, 'BUTTON_4', 'BUTTON_3'], // Square   → left
+  [9, 'BUTTON_3', 'BUTTON_4'], // Triangle → top
+]
+
+/**
+ * Switches the face buttons of every player to the PlayStation layout, but only where the mapping
+ * is still EmulatorJS's untouched default (a layout someone set up in the menu is kept).
+ */
+export function usePlayStationLayout(emu: GamepadEmulatorLike): boolean {
+  let changed = false
+  for (const table of [emu.defaultControllers, emu.controls]) {
+    if (!table) continue
+    for (const player of Object.values(table)) {
+      if (!player) continue
+      const untouched = EJS_FACE_DEFAULTS.every(([i, ejs]) => player[i]?.value2 === ejs)
+      if (!untouched) continue
+      for (const [i, , ps] of EJS_FACE_DEFAULTS) player[i] = { ...player[i], value2: ps }
+      if (table === emu.controls) changed = true
+    }
+  }
+  if (changed) {
+    try {
+      emu.checkGamepadInputs?.()
+      emu.saveSettings?.()
+    } catch {
+      // The mapping is already in effect; the menu labels are cosmetic.
+    }
+  }
+  return changed
+}
+
+/** RetroPad buttons a stick direction presses: [negative, positive]. */
+const STICK_BUTTONS: Readonly<Record<string, readonly [number, number]>> = {
+  LEFT_STICK_X: [6, 7], // D-pad left / right
+  LEFT_STICK_Y: [4, 5], // D-pad up / down
+  RIGHT_STICK_X: [12, 13], // L2 / R2: turns the camera in most 3D PS1 games
+}
 /** Stick travel that presses a direction, and the lower point that releases it (no flicker). */
 const PRESS_AT = 0.5
 const RELEASE_AT = 0.3
 
 /**
- * The PS1 core emulates the original digital pad unless a game is switched to analog, so the left
- * stick does nothing in most games (and Crash 1 & co. never read it). Mirror it onto the D-pad.
+ * The PS1 core emulates the original digital pad unless a game is switched to analog, so the sticks
+ * do nothing in most games (and Crash 1 & co. never read them). The left stick mirrors the D-pad;
+ * the right stick's left/right presses L2/R2, which turn the camera in most 3D PS1 games.
  */
 export function createStickToDpad(emu: GamepadEmulatorLike) {
   const held = new Map<string, -1 | 0 | 1>()
   return (e: GamepadEventLike, player: number) => {
     const axis = e.axis
-    if (axis !== 'LEFT_STICK_X' && axis !== 'LEFT_STICK_Y') return
+    const buttons = typeof axis === 'string' ? STICK_BUTTONS[axis] : undefined
+    if (!buttons) return
     if (!emu.started || !emu.gameManager) return
     if ((emu.settingsMenu && emu.settingsMenu.style.display !== 'none') || emu.isPopupOpen?.()) return
     const value = typeof e.value === 'number' ? e.value : 0
@@ -69,7 +119,7 @@ export function createStickToDpad(emu: GamepadEmulatorLike) {
     else if (Math.abs(value) < RELEASE_AT) now = 0
     if (now === before) return
     held.set(key, now)
-    const [neg, pos] = axis === 'LEFT_STICK_X' ? [DPAD.left, DPAD.right] : [DPAD.up, DPAD.down]
+    const [neg, pos] = buttons
     const press = (index: number, on: boolean) => emu.gameManager!.simulateInput(player, index, on ? 1 : 0)
     if (before === -1) press(neg, false)
     if (before === 1) press(pos, false)
