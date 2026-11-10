@@ -6,6 +6,9 @@ import type { ClassifiedGame, LocalGame } from '../../shared/types/game'
 import { StorageError } from '../../app/utils/localDb'
 import IndexPage from '../../app/pages/index.vue'
 
+const free = vi.hoisted(() => ({ games: [] as unknown[] }))
+mockNuxtImport('useFreeGames', () => () => ({ games: free.games }))
+
 const state = vi.hoisted(() => ({
   games: [] as LocalGame[],
   addGame: vi.fn(),
@@ -158,9 +161,23 @@ describe('index page', () => {
   })
 
   it('hides the free games section when the manifest is empty', async () => {
+    free.games = []
     const wrapper = await mountSuspended(IndexPage)
     expect(wrapper.text()).not.toContain('Free games')
     expect(wrapper.text()).toContain('My games')
+  })
+
+  it('lists free games with cover, author and licence, and shows their credits', async () => {
+    free.games = [{ id: 'voxide', title: 'VoXide', author: 'Emanuele Bonura', year: 2026, genre: 'Sandbox', license: 'GPL-2.0-or-later', sourceUrl: 'https://x', sourceCode: 'https://github.com/x/y', file: 'voxide.chd', cover: 'voxide.png', sizeBytes: 100, credits: ['Music: Mulula, CC BY 4.0'] }]
+    const wrapper = await mountSuspended(IndexPage)
+    await flushPromises()
+    expect(wrapper.text()).toContain('Free games')
+    expect(wrapper.find('a[href="/play/free/voxide"]').exists()).toBe(true)
+    expect(wrapper.find('img[src="/api/free/voxide/cover"]').exists()).toBe(true)
+    expect(wrapper.text()).toMatch(/Emanuele Bonura/)
+    expect(wrapper.text()).toMatch(/Mulula, CC BY 4\.0/)
+    expect(wrapper.find('a[href="https://github.com/x/y"]').exists()).toBe(true)
+    free.games = []
   })
 
   it('lists stored games and the storage meter', async () => {

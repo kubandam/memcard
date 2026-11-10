@@ -1,0 +1,39 @@
+[
+  {
+    "id": "voxide",
+    "title": "VoXide",
+    "author": "Emanuele Bonura (Bonnie Studios)",
+    "year": 2026,
+    "genre": "Sandbox / survival",
+    "license": "GPL-2.0-or-later (code); assets CC0 1.0; music CC BY 4.0",
+    "sourceUrl": "https://github.com/EBonura/voxide/tree/ff5f76a9221a5c31a168c25106d1a0786822a0e5/release",
+    "sourceCode": "https://github.com/EBonura/voxide/tree/ff5f76a9221a5c31a168c25106d1a0786822a0e5",
+    "file": "voxide.chd",
+    "cover": "voxide.png",
+    "sizeBytes": 24480344,
+    "credits": [
+      "Game and code: Emanuele Bonura, GPL-2.0-or-later",
+      "Block textures: \"16x16 Block Texture Set\", OpenGameArt, CC0 1.0",
+      "Music: Mulula VGM Loops (mululavgmloops.itch.io), CC BY 4.0",
+      "Version 0.4.1, converted to CHD; cover is an in-game screenshot"
+    ]
+  },
+  {
+    "id": "yarmico2",
+    "title": "Yarmico II",
+    "author": "gwald",
+    "year": 2023,
+    "genre": "Arcade shooter",
+    "license": "Public domain (The Unlicense); pixel art MIT (32blit, © 2019 Pimoroni Ltd)",
+    "sourceUrl": "https://github.com/gwald/yarmico2/blob/d11f50ad40fce57312887b1c5b9287a82176cd1e/binary-builds/yarmico2-Playstation.zip",
+    "sourceCode": "https://github.com/gwald/yarmico2/tree/d11f50ad40fce57312887b1c5b9287a82176cd1e",
+    "file": "yarmico2.chd",
+    "cover": "yarmico2.png",
+    "sizeBytes": 2234604,
+    "credits": [
+      "Game and code: gwald, public domain (Unlicense)",
+      "Pixel art: Sam (s4m-ur4i.itch.io) from the 32blit SDK examples, MIT, © 2019 Pimoroni Ltd",
+      "Made for the Net Yaroze Game Jam 2022; converted to CHD; cover is an in-game screenshot"
+    ]
+  }
+]

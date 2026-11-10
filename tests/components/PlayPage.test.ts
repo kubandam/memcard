@@ -57,6 +57,7 @@ const sharedMock = vi.hoisted(() => ({
   },
 }))
 mockNuxtImport('useSharedLibraries', () => () => sharedMock)
+mockNuxtImport('useFreeGames', () => () => ({ games: [{ id: 'voxide', title: 'VoXide', author: 'A', year: 2026, genre: 'g', license: 'GPL', sourceUrl: 'https://x', file: 'voxide.chd', sizeBytes: 4, credits: ['c'] }] }))
 
 const game: LocalGame = {
   id: 'g1',
@@ -182,6 +183,29 @@ describe('play page', () => {
     ;(window as unknown as { EJS_onGameStart: () => void }).EJS_onGameStart()
     await vi.waitFor(() => expect(cloudMock.stateRequests).toBe(1))
     expect(document.documentElement.dataset.phase).toBe('running')
+    state.route = { params: { source: 'local', id: 'g1' }, query: {} }
+  })
+
+  it('free: downloads the listed game from /api/free and boots it', async () => {
+    state.route = { params: { source: 'free', id: 'voxide' }, query: {} }
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(new Uint8Array(4)))
+    const wrapper = await mountSuspended(PlayPage)
+    await vi.waitFor(() => expect(document.documentElement.dataset.phase).toBe('loading'))
+    expect(String(fetchSpy.mock.calls[0]![0])).toBe('/api/free/voxide/file')
+    expect(((window as unknown as Record<string, unknown>).EJS_gameUrl as File).name).toBe('voxide.chd')
+    expect(wrapper.text()).toContain('VoXide')
+    fetchSpy.mockRestore()
+    state.route = { params: { source: 'local', id: 'g1' }, query: {} }
+  })
+
+  it('free: an unknown id is not found and fetches nothing', async () => {
+    state.route = { params: { source: 'free', id: 'nope' }, query: {} }
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+    const wrapper = await mountSuspended(PlayPage)
+    await flushPromises()
+    expect(wrapper.text()).toMatch(/not found/i)
+    expect(fetchSpy).not.toHaveBeenCalled()
+    fetchSpy.mockRestore()
     state.route = { params: { source: 'local', id: 'g1' }, query: {} }
   })
 

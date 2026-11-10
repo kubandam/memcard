@@ -254,5 +254,15 @@
     "continue": "Continue",
     "play": "Play",
     "startOver": "Start over"
+  },
+  "free": {
+    "title": "Free games",
+    "subtitle": "Homebrew you may play and share · no account needed",
+    "downloading": "Downloading…",
+    "source": "Source & licence",
+    "credits": "Credits & licences",
+    "licence": "Licence",
+    "obtained": "Where it comes from",
+    "sourceCode": "Source code"
   }
 }

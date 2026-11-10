@@ -4,6 +4,8 @@ import type { H3Event } from 'h3'
 export interface MemcardEnv {
   DB: D1Database
   R2: R2Bucket
+  /** Public, manifest-listed free games (see content/free-games.json). */
+  FREE?: R2Bucket
   RL_CREATE?: { limit: (opts: { key: string }) => Promise<{ success: boolean }> }
   RL_SHARE?: { limit: (opts: { key: string }) => Promise<{ success: boolean }> }
   MEMCARD_INVITES?: string

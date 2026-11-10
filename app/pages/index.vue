@@ -7,8 +7,7 @@ const { t } = useI18n()
 const { siteName } = useAppConfig()
 useHead({ title: t('home.title') })
 
-// Free games arrive with the M2 manifest; the section is hidden while empty.
-const freeGames = ref<LocalGame[]>([])
+const { games: freeGames } = useFreeGames()
 
 const {
   games, saving, notice, storage, sessionGame, coverUrls, coverBusy, bulkBusy, pendingConsentFor, missingCoverCount,
@@ -65,12 +64,6 @@ async function confirmDelete(id: string) {
   <div :data-hydrated="hydrated ? '' : undefined">
     <h1 class="visually-hidden">{{ siteName }}</h1>
 
-    <section v-if="freeGames.length" aria-labelledby="free-games">
-      <SectionLabel><span id="free-games">{{ t('home.freeGames') }}</span></SectionLabel>
-      <GameGrid>
-        <GameTile v-for="game in freeGames" :key="game.id" :game="game" :href="`/play/free/${game.id}`" />
-      </GameGrid>
-    </section>
 
     <ClientOnly>
       <ContinueHero v-if="cloud.status.value === 'open'" />
@@ -95,6 +88,8 @@ async function confirmDelete(id: string) {
         </div>
       </ClientOnly>
     </section>
+
+    <FreeGames v-if="freeGames.length" :games="freeGames" @downloaded="refresh" />
 
     <ClientOnly>
       <SharedLibrary v-for="lib in shared.libraries.value" :key="lib.shareId" :library="lib" @downloaded="refresh" />

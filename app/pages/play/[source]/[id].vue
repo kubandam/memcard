@@ -197,6 +197,39 @@ async function loadShared(gameId: string, shareId: string) {
   )
 }
 
+/** Free games from the manifest: fetched from /api/free with progress, then booted like a local game. */
+async function loadFree(id: string) {
+  const game = useFreeGames().games.find((g) => g.id === id)
+  if (!game) return void (notFound.value = true)
+  title.value = game.title
+  setPhase('reading')
+  const res = await fetch(`/api/free/${game.id}/file`)
+  if (!res.ok || !res.body) throw new ApiError(res.status || 503)
+  const reader = res.body.getReader()
+  const parts: Uint8Array[] = []
+  let got = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    parts.push(value)
+    got += value.length
+    setSubProgress('reading', 'loading', got / Math.max(1, game.sizeBytes))
+  }
+  const file = new File(parts as BlobPart[], game.file)
+  const pseudo: LocalGame = {
+    id: game.id,
+    title: game.title,
+    source: 'local',
+    kind: 'single',
+    primaryName: game.file,
+    files: [{ name: game.file, size: file.size, blobKey: game.file }],
+    sizeBytes: file.size,
+    createdAt: 0,
+    lastPlayedAt: null,
+  }
+  await boot(pseudo, async () => file)
+}
+
 async function loadSession(game: ClassifiedGame) {
   const blobs = new Map(game.files.map((f) => [f.name, f]))
   const pseudo: LocalGame = {
@@ -230,8 +263,9 @@ onMounted(async () => {
       await loadCloud(id.value)
     } else if (source.value === 'shared') {
       await loadShared(id.value, String(route.query.share ?? ''))
+    } else if (source.value === 'free') {
+      await loadFree(id.value)
     } else {
-      // 'free' (M2) is not implemented yet.
       notFound.value = true
     }
   } catch (err) {
