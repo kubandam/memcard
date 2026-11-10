@@ -6,7 +6,7 @@ import { authVerifierHex, deriveLibraryKeys, deriveRootKey, formatRecoveryKey, p
 import type { LocalGame } from '~~/shared/types/game'
 import { newGameKey, newObjectKey } from '~~/shared/utils/chunkCrypto'
 import { deriveShareKeys, formatShareCode, newShareSecret, wrapPayload } from '~~/shared/utils/shareCodes'
-import { deriveSaveKeys } from '~~/shared/utils/saveSync'
+import { deriveSaveKeys, deriveStateKeys } from '~~/shared/utils/saveSync'
 import type { SharePayload } from '~~/shared/types/share'
 import { ApiError, createCloudApi, type CloudApi } from '~/utils/cloudApi'
 import { ResumeMismatchError, UploadCancelledError, uploadObject } from '~/utils/cloudUpload'
@@ -535,9 +535,13 @@ export function useCloudLibrary() {
     for (const f of game.files) await api.deleteObject(f.objectKey).catch(() => undefined)
     if (game.coverObjectKey) await api.deleteObject(game.coverObjectKey).catch(() => undefined)
     try {
-      await api.deleteSave((await deriveSaveKeys(fromBase64Url(game.kGame))).saveKey)
+      const kGame = fromBase64Url(game.kGame)
+      await api.deleteSave((await deriveSaveKeys(kGame)).saveKey)
+      const st = await deriveStateKeys(kGame)
+      await api.deleteBlob('state', st.stateKey)
+      await api.deleteBlob('shot', st.shotKey)
     } catch {
-      // An orphaned save is harmless; the game is gone.
+      // Orphaned saves are harmless; the game is gone.
     }
     await refreshUsage()
   }

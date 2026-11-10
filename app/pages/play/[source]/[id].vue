@@ -10,6 +10,7 @@ import { ApiError } from '~/utils/cloudApi'
 import { DecryptError } from '~/utils/cloudDownload'
 import { SharedGameGoneError, ShareRevokedError } from '~/composables/useSharedLibraries'
 import { createSaveSync, type CardFs } from '~/utils/saveSyncClient'
+import { createStateSync } from '~/utils/stateSyncClient'
 import { fromBase64Url } from '~~/shared/utils/bytes'
 import type { SyncMeta } from '~~/shared/utils/saveSync'
 import { setSetting } from '~/utils/localDb'
@@ -23,7 +24,7 @@ const { public: { emulatorjsBase } } = useRuntimeConfig()
 const source = computed(() => String(route.params.source))
 const id = computed(() => String(route.params.id))
 
-const { phase, progress, error, setPhase, setSubProgress, fail, start, onSaveExport, flushSaves } = useEmulator()
+const { phase, progress, error, setPhase, setSubProgress, fail, start, onSaveExport, flushSaves, loadState } = useEmulator()
 const title = ref('')
 const notFound = ref(false)
 const libraryClosed = ref(false)
@@ -35,6 +36,9 @@ const saveNotice = ref<string | null>(null)
 interface BootHooks {
   onFsReady?: (fs: unknown, path: string) => void
   onCardSaved?: (card: Uint8Array) => void
+  onStateSaved?: (s: { state: Uint8Array; screenshot: Uint8Array | null }) => void
+  onStateLoadRequested?: () => void
+  onStarted?: () => void
 }
 
 function downloadCard(card: Uint8Array, name: string) {
@@ -132,6 +136,9 @@ async function loadCloud(gameId: string) {
   })
   await sync.prepare().catch(() => undefined)
   saveSync.value = sync
+  // One synced save-state slot: the emulator menu's Save/Load State and "Continue" use it.
+  const states = createStateSync({ api: cloud.saveApi(), kGame })
+  const resume = route.query.resume === '1'
   await boot(pseudo, async (key) => byName.get(key), {
     onFsReady: (fs, path) => {
       const res = sync.onFsReady(fs as CardFs, path)
@@ -143,6 +150,20 @@ async function loadCloud(gameId: string) {
       }
     },
     onCardSaved: (card) => sync.onCardSaved(card),
+    onStateSaved: async (st) => {
+      saveNotice.value = t('state.saving')
+      saveNotice.value = (await states.save(st)) ? t('state.saved') : t('state.offline')
+    },
+    onStateLoadRequested: async () => {
+      const latest = await states.loadLatest()
+      saveNotice.value = latest && loadState(latest) ? t('state.loaded') : t('state.none')
+    },
+    onStarted: resume
+      ? async () => {
+          const latest = await states.loadLatest()
+          if (latest && loadState(latest)) saveNotice.value = t('state.resumed')
+        }
+      : undefined,
   })
 }
 

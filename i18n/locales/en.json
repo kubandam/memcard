@@ -237,5 +237,13 @@
     "error": "Cloud save was damaged — your save here will replace it",
     "pulled": "Loaded your save from the cloud",
     "conflict": "Both this PC and the cloud had newer saves — the cloud one is loaded, this PC's was downloaded as a file"
+  },
+  "state": {
+    "saving": "Saving snapshot to the cloud…",
+    "saved": "Snapshot saved to the cloud",
+    "offline": "Snapshot not saved to the cloud (offline?)",
+    "loaded": "Snapshot loaded",
+    "none": "No snapshot in the cloud yet",
+    "resumed": "Continuing from your last snapshot"
   }
 }

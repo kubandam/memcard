@@ -31,10 +31,13 @@ const cloudMock = vi.hoisted(() => ({
   downloadGameFiles: async (_g: unknown, _p?: (d: number, t: number) => void) => [new File([new Uint8Array(4)], 'Cloud Game.chd')] as File[],
   getSaveCalls: 0,
   markPlayed: async () => {},
+  stateRequests: 0,
   saveApi() {
     return {
       getSave: async () => { cloudMock.getSaveCalls++; return null },
       putSave: async () => {},
+      getBlob: async (kind: string) => { if (kind === 'state') cloudMock.stateRequests++; return null },
+      putBlob: async () => {},
     }
   },
 }))
@@ -166,6 +169,19 @@ describe('play page', () => {
     expect(cloudMock.getSaveCalls).toBe(1)
     expect(wrapper.text()).toContain('Cloud Game')
     expect(((window as unknown as Record<string, unknown>).EJS_gameUrl as File).name).toBe('Cloud Game.chd')
+    state.route = { params: { source: 'local', id: 'g1' }, query: {} }
+  })
+
+  it('cloud with ?resume=1: after start it looks up the synced state; none → keeps running', async () => {
+    state.route = { params: { source: 'cloud', id: 'c1' }, query: { resume: '1' } }
+    cloudMock.status.value = 'open'
+    cloudMock.stateRequests = 0
+    cloudMock.games.value = [{ id: 'c1', title: 'Cloud Game', kind: 'single', primaryName: 'Cloud Game.chd', files: [{ name: 'Cloud Game.chd', size: 4, objectKey: 'k', chunks: 1 }], sizeBytes: 4, createdAt: 1, lastPlayedAt: null, kGame: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' }]
+    await mountSuspended(PlayPage)
+    await vi.waitFor(() => expect(document.documentElement.dataset.phase).toBe('loading'))
+    ;(window as unknown as { EJS_onGameStart: () => void }).EJS_onGameStart()
+    await vi.waitFor(() => expect(cloudMock.stateRequests).toBe(1))
+    expect(document.documentElement.dataset.phase).toBe('running')
     state.route = { params: { source: 'local', id: 'g1' }, query: {} }
   })
 
